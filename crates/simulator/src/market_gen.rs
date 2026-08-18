@@ -50,8 +50,11 @@ pub struct SyntheticDataConfig {
     pub max_move_ticks: u64,
     /// Probability each book tick also prints a trade.
     pub trade_prob: f64,
-    /// Trade size in base units.
+/// Trade size in base units.
     pub trade_qty: Qty,
+    /// Re-emit a full snapshot every N ticks so a missed boot snapshot (or a
+    /// dropped delta) self-heals. 0 disables periodic resync.
+    pub resync_every_ticks: u64,
     /// RNG seed for deterministic replay.
     pub seed: u64,
 }
@@ -67,8 +70,9 @@ impl Default for SyntheticDataConfig {
             level_qty: Decimal::from(10),
             qty_jitter: 0.3,
             max_move_ticks: 1,
-            trade_prob: 0.3,
+trade_prob: 0.3,
             trade_qty: Decimal::new(5, 1),
+            resync_every_ticks: 50,
             seed: 42,
         }
     }
@@ -273,9 +277,36 @@ impl SyntheticMarketData {
         })
     }
 
-    /// Produce the next tick's events (delta + optional trade).
+/// Produce the next tick's events (delta + optional trade).
     pub fn next_events(&mut self, now: TimestampMs) -> Vec<MarketEvent> {
         self.next_delta(now)
+    }
+
+    /// Full snapshot of the current book state. `None` until a snapshot has
+    /// been established. Unlike [`Self::initial_snapshot`] this does not reset
+    /// the sequence or re-draw the level set, so the delta stream stays
+    /// contiguous across resyncs.
+    pub fn resync_snapshot(&mut self, now: TimestampMs) -> Option<MarketEvent> {
+        let levels = self.level_set.as_ref()?;
+        let bids: Vec<OrderBookLevel> = levels
+            .bids
+            .iter()
+            .map(|(t, q)| OrderBookLevel::new(self.price_for(*t), qty_from_u64(*q)))
+            .collect();
+        let asks: Vec<OrderBookLevel> = levels
+            .asks
+            .iter()
+            .map(|(t, q)| OrderBookLevel::new(self.price_for(*t), qty_from_u64(*q)))
+            .collect();
+        Some(MarketEvent::Snapshot(OrderBookSnapshot {
+            venue: self.venue,
+            symbol: self.symbol.clone(),
+            sequence: self.seq,
+            event_ts: now,
+            exchange_ts: now,
+            bids,
+            asks,
+        }))
     }
 }
 
@@ -309,15 +340,25 @@ impl SimulatedFeed {
             let venue = gen.venue;
             let symbol = gen.symbol.clone();
             let _ = bus.market().try_publish(gen.initial_snapshot(now));
-            let _ = bus.market().try_publish(MarketEvent::Status {
+let _ = bus.market().try_publish(MarketEvent::Status {
                 venue,
                 symbol: symbol.clone(),
                 status: FeedStatus::Healthy,
                 ts: now,
             });
+            let mut ticks_since_resync = 0u64;
             loop {
                 interval.tick().await;
                 let now = TimestampMs::now();
+                if gen.cfg.resync_every_ticks > 0
+                    && ticks_since_resync >= gen.cfg.resync_every_ticks
+                {
+                    ticks_since_resync = 0;
+                    if let Some(snap) = gen.resync_snapshot(now) {
+                        let _ = bus.market().try_publish(snap);
+                    }
+                }
+                ticks_since_resync += 1;
                 for event in gen.next_events(now) {
                     let _ = bus.market().try_publish(event);
                 }

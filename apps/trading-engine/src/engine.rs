@@ -121,6 +121,12 @@ pub async fn run(cfg: EngineConfig) -> anyhow::Result<()> {
         }));
     }
 
+    // Subscribe before spawning feeds so the boot snapshot is not missed.
+    let mut market_sub = bus.market().subscribe();
+    let mut exec_sub = bus.execution().subscribe();
+    let mut ctrl_sub = bus.control().subscribe();
+    let mut running = false;
+
     // Market data feeds.
     for symbol_str in &cfg.symbols {
         let symbol: Symbol = symbol_str.parse()?;
@@ -219,11 +225,6 @@ pub async fn run(cfg: EngineConfig) -> anyhow::Result<()> {
             Err(e) => tracing::warn!(err = %e, "postgres unavailable; persistence disabled"),
         }
     }
-
-    let mut market_sub = bus.market().subscribe();
-    let mut exec_sub = bus.execution().subscribe();
-    let mut ctrl_sub = bus.control().subscribe();
-    let mut running = false;
 
     tracing::info!(symbols = ?cfg.symbols, venues = ?cfg.venues, "trading engine started");
 

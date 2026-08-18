@@ -4,7 +4,7 @@
 //! so the engine never touches metric primitives directly. A single
 //! [`MetricsServer`] can then serve the whole registry over HTTP for scraping.
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use axum::extract::State;
 use axum::http::{header, Response, StatusCode};
@@ -53,6 +53,9 @@ pub struct Metrics {
     topic_dropped: IntCounterVec,
     topic_no_subscribers: IntCounterVec,
     topic_subscribers: IntGaugeVec,
+    /// Last-seen cumulative topic stats, so `observe_bus` reports deltas and
+    /// the Prometheus counters do not grow quadratically across ticks.
+    topic_last: Arc<Mutex<[(u64, u64, u64); 3]>>,
 }
 
 fn register(registry: &Registry, collector: Box<dyn Collector>) {
@@ -182,6 +185,7 @@ impl Metrics {
             topic_dropped,
             topic_no_subscribers,
             topic_subscribers,
+            topic_last: Arc::new(Mutex::new([(0, 0, 0); 3])),
         }
     }
 
@@ -290,20 +294,29 @@ impl Metrics {
 
     /// Record topic statistics from the bus.
     pub fn observe_bus(&self, bus: &EventBus) {
-        for (name, stats) in [
+        let mut last = self.topic_last.lock().unwrap();
+        for (i, (name, stats)) in [
             ("market", bus.market_stats()),
             ("execution", bus.execution().stats()),
             ("control", bus.control().stats()),
-        ] {
+        ]
+        .iter()
+        .enumerate()
+        {
+            let prev = &mut last[i];
+            let published_delta = stats.published.saturating_sub(prev.0);
+            let dropped_delta = stats.dropped.saturating_sub(prev.1);
+            let no_sub_delta = stats.no_subscribers.saturating_sub(prev.2);
+            *prev = (stats.published, stats.dropped, stats.no_subscribers);
             self.topic_published
                 .with_label_values(&[name])
-                .inc_by(stats.published);
+                .inc_by(published_delta);
             self.topic_dropped
                 .with_label_values(&[name])
-                .inc_by(stats.dropped);
+                .inc_by(dropped_delta);
             self.topic_no_subscribers
                 .with_label_values(&[name])
-                .inc_by(stats.no_subscribers);
+                .inc_by(no_sub_delta);
             self.topic_subscribers
                 .with_label_values(&[name])
                 .set(stats.subscribers as i64);
