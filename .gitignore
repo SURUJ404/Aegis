@@ -8,6 +8,18 @@
 credentials.json
 secrets/
 
+# Keys / certificates / tokens
+*.pem
+*.key
+*.p12
+*.pfx
+*.keystore
+id_rsa
+id_ed25519
+*.secret
+*.token
+.envrc
+
 # Logs / data
 *.log
 /data/
