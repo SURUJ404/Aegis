@@ -1,0 +1,26 @@
+[package]
+name = "simulator"
+description = "Run the paper exchange with synthetic market data and report metrics."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "simulate"
+path = "src/main.rs"
+
+[dependencies]
+lq-types = { path = "../../crates/types" }
+lq-core = { path = "../../crates/core" }
+lq-simulator = { path = "../../crates/simulator" }
+lq-orderbook = { path = "../../crates/orderbook" }
+lq-telemetry = { path = "../../crates/telemetry" }
+lq-execution = { path = "../../crates/execution" }
+lq-exchange = { path = "../../crates/exchange" }
+tokio = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }
+clap = { workspace = true }
+dotenvy = { workspace = true }
+rust_decimal = { workspace = true }
+rust_decimal_macros = { workspace = true }

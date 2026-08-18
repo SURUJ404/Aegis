@@ -1,0 +1,22 @@
+[package]
+name = "lq-simulator"
+description = "Paper exchange with local matching and synthetic market data generation."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+lq-types = { path = "../types" }
+lq-core = { path = "../core" }
+lq-exchange = { path = "../exchange" }
+lq-orderbook = { path = "../orderbook" }
+lq-execution = { path = "../execution" }
+rust_decimal = { workspace = true }
+rust_decimal_macros = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+rand = { workspace = true }
+tokio = { workspace = true }
+parking_lot = { workspace = true }
+async-trait = { workspace = true }
+uuid = { workspace = true }

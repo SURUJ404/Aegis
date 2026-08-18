@@ -1,0 +1,25 @@
+# Rust
+/target
+
+# Local configuration / secrets
+.env
+.env.*
+*.local
+credentials.json
+secrets/
+
+# Logs / data
+*.log
+/data/
+*.pcap
+*.trace
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Criterion
+/target/criterion/

@@ -1,0 +1,23 @@
+[package]
+name = "lq-orderbook"
+description = "High-performance local order book with sequence management."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dev-dependencies]
+criterion = { workspace = true }
+
+[[bench]]
+name = "orderbook"
+harness = false
+
+[dependencies]
+lq-types = { path = "../types" }
+lq-core = { path = "../core" }
+lq-exchange = { path = "../exchange" }
+rust_decimal = { workspace = true }
+rust_decimal_macros = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+dashmap = { workspace = true }

@@ -1,0 +1,78 @@
+services:
+  trading-engine:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      args:
+        BIN: trading-engine
+    image: lq/trading-engine:0.1.0
+    ports:
+      - "8080:8080"
+      - "9100:9100"
+    environment:
+      LQ_CONFIG: /config/lq.toml
+      PERSISTENCE_ENABLED: "1"
+    volumes:
+      - ./config:/config
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  market-data-service:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      args:
+        BIN: market-data-service
+    image: lq/market-data-service:0.1.0
+    environment:
+      LQ_CONFIG: /config/lq.toml
+    volumes:
+      - ./config:/config
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: lq
+      POSTGRES_PASSWORD: lq
+      POSTGRES_DB: liquidity
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lq -d liquidity"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    depends_on:
+      - trading-engine
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+
+volumes:
+  pgdata:

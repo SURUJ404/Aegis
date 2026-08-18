@@ -1,0 +1,36 @@
+[package]
+name = "trading-engine"
+description = "Main engine binary: wires market data, books, strategy, risk, execution, observability."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "trading-engine"
+path = "src/main.rs"
+
+[dependencies]
+lq-types = { path = "../../crates/types" }
+lq-core = { path = "../../crates/core" }
+lq-exchange = { path = "../../crates/exchange" }
+lq-orderbook = { path = "../../crates/orderbook" }
+lq-market-data = { path = "../../crates/market-data" }
+lq-strategy = { path = "../../crates/strategy" }
+lq-risk = { path = "../../crates/risk" }
+lq-execution = { path = "../../crates/execution" }
+lq-simulator = { path = "../../crates/simulator" }
+lq-telemetry = { path = "../../crates/telemetry" }
+lq-persistence = { path = "../../crates/persistence" }
+lq-api = { path = "../../crates/api" }
+tokio = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }
+clap = { workspace = true }
+dotenvy = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+rust_decimal = { workspace = true }
+rust_decimal_macros = { workspace = true }
+dashmap = { workspace = true }
+axum = { workspace = true }

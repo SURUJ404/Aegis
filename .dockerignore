@@ -1,0 +1,8 @@
+target/
+.git/
+docs/
+deploy/
+docker/
+tests/
+benches/
+*.toml.bak

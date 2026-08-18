@@ -1,0 +1,21 @@
+[package]
+name = "lq-telemetry"
+description = "Tracing, Prometheus metrics and latency histogram infrastructure."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+lq-core = { path = "../core" }
+lq-types = { path = "../types" }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+prometheus = { workspace = true }
+tokio = { workspace = true }
+chrono = { workspace = true }
+thiserror = { workspace = true }
+axum = { workspace = true }
+anyhow = { workspace = true }
+uuid = { workspace = true }
+rust_decimal = { workspace = true }
+rust_decimal_macros = { workspace = true }

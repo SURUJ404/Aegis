@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: market-data-service
+  namespace: liquidity
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: market-data-service
+  template:
+    metadata:
+      labels:
+        app: market-data-service
+    spec:
+      containers:
+        - name: market-data-service
+          image: lq/market-data-service:0.1.0
+          args: ["--config", "/config/lq.toml"]
+          ports:
+            - containerPort: 9100
+              name: metrics
+          env:
+            - name: LQ_CONFIG
+              value: /config/lq.toml
+          volumeMounts:
+            - name: config
+              mountPath: /config
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: metrics
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          resources:
+            limits:
+              cpu: "1"
+              memory: 512Mi
+            requests:
+              cpu: 100m
+              memory: 128Mi
+      volumes:
+        - name: config
+          configMap:
+            name: lq-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: market-data-service
+  namespace: liquidity
+spec:
+  selector:
+    app: market-data-service
+  ports:
+    - port: 9100
+      targetPort: 9100
+      name: metrics

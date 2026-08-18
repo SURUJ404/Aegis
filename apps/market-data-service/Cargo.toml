@@ -1,0 +1,22 @@
+[package]
+name = "market-data-service"
+description = "Standalone market data collection and persistence service."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "market-data-service"
+path = "src/main.rs"
+
+[dependencies]
+lq-types = { path = "../../crates/types" }
+lq-core = { path = "../../crates/core" }
+lq-market-data = { path = "../../crates/market-data" }
+lq-telemetry = { path = "../../crates/telemetry" }
+lq-persistence = { path = "../../crates/persistence" }
+tokio = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }
+clap = { workspace = true }
+dotenvy = { workspace = true }

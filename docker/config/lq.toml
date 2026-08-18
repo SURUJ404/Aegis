@@ -1,0 +1,26 @@
+# Default engine config for containers. Override in this directory for your
+# deployment. See docs/OPERATIONS.md for the full reference.
+mode = "paper"
+symbols = ["BTC-USDT"]
+venues = ["paper", "simulated"]
+
+[paper]
+base_latency_ms = 2.0
+latency_jitter_ms = 1.0
+
+[strategy.market_making]
+quote_refresh_ms = 250
+
+[risk]
+max_order_rate_per_sec = 20.0
+
+[telemetry]
+metrics_bind = "0.0.0.0:9100"
+
+[api]
+bind = "0.0.0.0:8080"
+
+[persistence]
+enabled = true
+postgres_url = "postgres://lq:lq@postgres:5432/liquidity"
+redis_url = "redis://redis:6379"

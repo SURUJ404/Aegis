@@ -1,0 +1,22 @@
+[package]
+name = "api-server"
+description = "Standalone control-plane API server."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "api-server"
+path = "src/main.rs"
+
+[dependencies]
+lq-types = { path = "../../crates/types" }
+lq-core = { path = "../../crates/core" }
+lq-api = { path = "../../crates/api" }
+lq-telemetry = { path = "../../crates/telemetry" }
+tokio = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }
+clap = { workspace = true }
+dotenvy = { workspace = true }
+axum = { workspace = true }

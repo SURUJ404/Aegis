@@ -1,0 +1,266 @@
+//! Control-plane HTTP API.
+//!
+//! Exposes engine state (positions, inventory, orders, market state, risk) and
+//! control endpoints (start / stop / reset / kill-switch) over HTTP. Reads
+//! come from the shared [`EngineState`]; writes publish [`ControlEvent`]s onto
+//! the control topic so the engine reacts to them asynchronously.
+
+use std::sync::Arc;
+
+use axum::extract::State;
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
+use axum::routing::{get, post};
+use axum::{Json, Router};
+use lq_core::bus::{EventBus, PublishResult};
+use lq_core::event::ControlEvent;
+use lq_core::models::{Inventory, MarketState, Order, Position};
+use lq_core::state::{EngineState, RiskStatus};
+use serde::Serialize;
+
+/// Everything a handler needs. Cheap to clone (Arcs + interior mutability).
+#[derive(Clone)]
+pub struct ApiState {
+    pub state: EngineState,
+    pub bus: Arc<EventBus>,
+}
+
+impl ApiState {
+    pub fn new(state: EngineState, bus: Arc<EventBus>) -> Self {
+        Self { state, bus }
+    }
+}
+
+/// Build the full control-plane router.
+pub fn build_router(state: ApiState) -> Router {
+    Router::new()
+        .route("/healthz", get(healthz))
+        .route("/api/v1/state", get(state_summary))
+        .route("/api/v1/positions", get(list_positions))
+        .route("/api/v1/inventory", get(list_inventory))
+        .route("/api/v1/orders", get(list_orders))
+        .route("/api/v1/market-state", get(list_market_state))
+        .route("/api/v1/risk", get(risk_status))
+        .route("/api/v1/control/start", post(publish_start))
+        .route("/api/v1/control/stop", post(publish_stop))
+        .route("/api/v1/control/reset", post(publish_reset))
+        .route("/api/v1/control/kill", post(publish_kill))
+        .with_state(state)
+}
+
+/// One-shot aggregate view of engine state.
+#[derive(Debug, Serialize)]
+pub struct StateSummary {
+    pub positions: Vec<Position>,
+    pub inventory: Vec<Inventory>,
+    pub orders: Vec<Order>,
+    pub market_state: Vec<MarketState>,
+    pub risk: RiskStatus,
+    pub strategy_running: bool,
+    pub uptime_ms: u64,
+}
+
+async fn healthz() -> &'static str {
+    "ok"
+}
+
+async fn state_summary(State(api): State<ApiState>) -> Json<StateSummary> {
+    let state = &api.state;
+    let mut positions: Vec<_> = state
+        .positions
+        .iter()
+        .map(|e| e.value().clone())
+        .collect();
+    positions.sort_by(|a, b| (a.venue.to_string(), a.symbol.as_str()).cmp(&(b.venue.to_string(), b.symbol.as_str())));
+
+    let mut inventory: Vec<_> = state
+        .inventory
+        .iter()
+        .map(|e| e.value().clone())
+        .collect();
+    inventory.sort_by(|a, b| a.symbol.as_str().cmp(b.symbol.as_str()));
+
+    let mut orders: Vec<_> = state.orders.iter().map(|e| e.value().clone()).collect();
+    orders.sort_by_key(|o| o.created_at);
+
+    let mut market_state: Vec<_> = state
+        .market_state
+        .iter()
+        .map(|e| e.value().clone())
+        .collect();
+    market_state.sort_by(|a, b| (a.venue.to_string(), a.symbol.as_str()).cmp(&(b.venue.to_string(), b.symbol.as_str())));
+
+    Json(StateSummary {
+        positions,
+        inventory,
+        orders,
+        market_state,
+        risk: state.risk_snapshot(),
+        strategy_running: state.is_strategy_running(),
+        uptime_ms: lq_types::TimestampMs::now().as_u64().saturating_sub(state.started_at.as_u64()),
+    })
+}
+
+async fn list_positions(State(api): State<ApiState>) -> Json<Vec<Position>> {
+    let mut positions: Vec<_> = api
+        .state
+        .positions
+        .iter()
+        .map(|e| e.value().clone())
+        .collect();
+    positions.sort_by(|a, b| (a.venue.to_string(), a.symbol.as_str()).cmp(&(b.venue.to_string(), b.symbol.as_str())));
+    Json(positions)
+}
+
+async fn list_inventory(State(api): State<ApiState>) -> Json<Vec<Inventory>> {
+    let mut inventory: Vec<_> = api
+        .state
+        .inventory
+        .iter()
+        .map(|e| e.value().clone())
+        .collect();
+    inventory.sort_by(|a, b| a.symbol.as_str().cmp(b.symbol.as_str()));
+    Json(inventory)
+}
+
+async fn list_orders(State(api): State<ApiState>) -> Json<Vec<Order>> {
+    let mut orders: Vec<_> = api.state.orders.iter().map(|e| e.value().clone()).collect();
+    orders.sort_by_key(|o| o.created_at);
+    Json(orders)
+}
+
+async fn list_market_state(State(api): State<ApiState>) -> Json<Vec<MarketState>> {
+    let mut market_state: Vec<_> = api
+        .state
+        .market_state
+        .iter()
+        .map(|e| e.value().clone())
+        .collect();
+    market_state.sort_by(|a, b| (a.venue.to_string(), a.symbol.as_str()).cmp(&(b.venue.to_string(), b.symbol.as_str())));
+    Json(market_state)
+}
+
+async fn risk_status(State(api): State<ApiState>) -> Json<RiskStatus> {
+    Json(api.state.risk_snapshot())
+}
+
+async fn publish_start(State(api): State<ApiState>) -> ControlResponse {
+    publish_control(&api.bus, ControlEvent::Start).await
+}
+
+async fn publish_stop(State(api): State<ApiState>) -> ControlResponse {
+    publish_control(&api.bus, ControlEvent::Stop).await
+}
+
+async fn publish_reset(State(api): State<ApiState>) -> ControlResponse {
+    publish_control(&api.bus, ControlEvent::Reset).await
+}
+
+#[derive(serde::Deserialize)]
+pub struct KillBody {
+    pub reason: String,
+}
+
+async fn publish_kill(State(api): State<ApiState>, Json(body): Json<KillBody>) -> ControlResponse {
+    publish_control(&api.bus, ControlEvent::KillSwitch { reason: body.reason }).await
+}
+
+async fn publish_control(bus: &EventBus, event: ControlEvent) -> ControlResponse {
+    match bus.control().publish_blocking(event).await {
+        PublishResult::Published => ControlResponse {
+            accepted: true,
+            message: "published".into(),
+        },
+        PublishResult::Backpressure => ControlResponse {
+            accepted: false,
+            message: "control queue full; retry".into(),
+        },
+        PublishResult::Dropped => ControlResponse {
+            accepted: false,
+            message: "dropped".into(),
+        },
+        PublishResult::NoSubscribers => ControlResponse {
+            accepted: false,
+            message: "engine not listening".into(),
+        },
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct ControlResponse {
+    pub accepted: bool,
+    pub message: String,
+}
+
+impl IntoResponse for ControlResponse {
+    fn into_response(self) -> Response {
+        let status = if self.accepted {
+            StatusCode::ACCEPTED
+        } else {
+            StatusCode::SERVICE_UNAVAILABLE
+        };
+        (status, Json(self)).into_response()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::body::{to_bytes, Body};
+    use axum::http::{Request, StatusCode as HttpStatus};
+    use tower::ServiceExt;
+
+    #[tokio::test]
+    async fn healthz_ok() {
+        let bus = Arc::new(EventBus::new());
+        let api = ApiState::new(EngineState::new(), bus);
+        let app = build_router(api);
+        let res = app
+            .oneshot(Request::builder().uri("/healthz").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(res.status(), HttpStatus::OK);
+        let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
+        assert_eq!(&body[..], b"ok");
+    }
+
+    #[tokio::test]
+    async fn state_endpoint_returns_json() {
+        let bus = Arc::new(EventBus::new());
+        let engine = EngineState::new();
+        engine.set_strategy_running(true);
+        let api = ApiState::new(engine, bus);
+        let app = build_router(api);
+        let res = app
+            .oneshot(Request::builder().uri("/api/v1/state").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(res.status(), HttpStatus::OK);
+        let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
+        let text = String::from_utf8(body.to_vec()).unwrap();
+        assert!(text.contains("strategy_running"));
+        assert!(text.contains("true"));
+    }
+
+    #[tokio::test]
+    async fn kill_switch_publishes() {
+        let bus = Arc::new(EventBus::new());
+        let mut sub = bus.control().subscribe();
+        let api = ApiState::new(EngineState::new(), Arc::clone(&bus));
+        let app = build_router(api);
+        let res = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/control/kill")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"reason":"test halt"}"#.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), HttpStatus::ACCEPTED);
+        let received = sub.recv().await;
+        assert!(matches!(received, Some(ControlEvent::KillSwitch { reason }) if reason == "test halt"));
+    }
+}
