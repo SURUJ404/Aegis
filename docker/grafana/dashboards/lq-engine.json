@@ -1,0 +1,89 @@
+{
+  "title": "LQ Engine",
+  "uid": "lq-engine",
+  "schemaVersion": 39,
+  "version": 1,
+  "timezone": "browser",
+  "refresh": "2s",
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Kill switch",
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 0 },
+      "targets": [{ "expr": "lq_halted", "refId": "A" }],
+      "fieldConfig": { "defaults": { "thresholds": { "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } } }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Strategy running",
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 0 },
+      "targets": [{ "expr": "lq_strategy_running", "refId": "B" }],
+      "fieldConfig": { "defaults": { "thresholds": { "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] } } }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Net position by venue",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 0 },
+      "targets": [{ "expr": "lq_net_position", "refId": "C" }]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Open orders",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 4 },
+      "targets": [{ "expr": "lq_open_orders", "refId": "D" }]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Realized PnL",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 4 },
+      "targets": [{ "expr": "lq_realized_pnl", "refId": "E" }]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Market events / sec",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "targets": [{ "expr": "sum(rate(lq_market_events_total[1m])) by (kind)", "refId": "F" }]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Pipeline latency (ns) p50/p95/p99",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum(rate(lq_latency_ns_bucket[1m])) by (le))", "refId": "G" },
+        { "expr": "histogram_quantile(0.95, sum(rate(lq_latency_ns_bucket[1m])) by (le))", "refId": "H" },
+        { "expr": "histogram_quantile(0.99, sum(rate(lq_latency_ns_bucket[1m])) by (le))", "refId": "I" }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Dropped / no-subscriber events",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
+      "targets": [
+        { "expr": "sum(rate(lq_topic_dropped_total[1m])) by (topic)", "refId": "J" },
+        { "expr": "sum(rate(lq_topic_no_subscribers_total[1m])) by (topic)", "refId": "K" }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "stat",
+      "title": "Fills",
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 20 },
+      "targets": [{ "expr": "sum(lq_fills_total)", "refId": "L" }]
+    },
+    {
+      "id": 10,
+      "type": "stat",
+      "title": "Market events dropped",
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 20 },
+      "targets": [{ "expr": "lq_topic_dropped_total{topic=\"market\"}", "refId": "M" }]
+    }
+  ]
+}

@@ -27,8 +27,15 @@ fn load_config(cli: &Cli) -> anyhow::Result<EngineConfig> {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    install_tls_provider();
     let cli = Cli::parse();
     let cfg = load_config(&cli)?;
     lq_telemetry::init_logging(&cfg.telemetry)?;
     engine::run(cfg).await
+}
+
+/// Pick a single rustls crypto provider so TLS connections do not panic at
+/// runtime when rustls cannot auto-detect a provider.
+fn install_tls_provider() {
+    let _ = rustls::crypto::ring::default_provider().install_default();
 }

@@ -2,7 +2,7 @@
 # deployment. See docs/OPERATIONS.md for the full reference.
 mode = "paper"
 symbols = ["BTC-USDT"]
-venues = ["paper", "simulated"]
+venues = ["binance", "paper", "simulated"]
 
 [paper]
 base_latency_ms = 2.0

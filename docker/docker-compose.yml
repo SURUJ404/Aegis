@@ -7,11 +7,10 @@ services:
         BIN: trading-engine
     image: lq/trading-engine:0.1.0
     ports:
-      - "8080:8080"
-      - "9100:9100"
+      - "18080:8080"
+      - "19100:9100"
     environment:
       LQ_CONFIG: /config/lq.toml
-      PERSISTENCE_ENABLED: "1"
     volumes:
       - ./config:/config
     depends_on:
@@ -71,8 +70,24 @@ services:
     image: grafana/grafana:latest
     ports:
       - "3000:3000"
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
     depends_on:
       - prometheus
+
+  dashboard:
+    build:
+      context: ../web
+      dockerfile: Dockerfile
+    image: lq/dashboard:0.1.0
+    ports:
+      - "18000:80"
+    depends_on:
+      - trading-engine
 
 volumes:
   pgdata:

@@ -4,7 +4,7 @@
 # BIN is the PACKAGE name (trading-engine | market-data-service | backtest-runner |
 # simulator | api-server). The runtime image contains that binary as /app.
 
-FROM rust:1.85-slim AS builder
+FROM rust:1.88-slim AS builder
 ARG BIN=trading-engine
 WORKDIR /src
 COPY . .

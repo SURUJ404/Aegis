@@ -57,6 +57,12 @@ pub trait FeedDecoder: Send {
     /// App-level ping payload, or `None` if the protocol uses only WS pings.
     fn ping_payload(&self) -> Option<String>;
 
+    /// Outbound reply for a received text frame, if the protocol requires one
+    /// (e.g. Binance server `{"method":"ping"}` → client `{"method":"pong"}`).
+    fn outbound_reply(&self, _text: &str) -> Option<String> {
+        None
+    }
+
     /// Process one inbound text frame, publishing normalized events to `bus`.
     /// Returns `true` if the frame should count as a liveness signal (always
     /// the case except for server pong replies we explicitly initiated).
@@ -132,9 +138,13 @@ pub async fn run_ws(
             }
         });
 
-        // Ping interval.
+        // Ping interval. The first tick fires immediately; consume it so the
+        // first app-level ping is not sent the instant we connect.
         let mut ping_tick = tokio::time::interval(Duration::from_millis(cfg.ping_interval_ms));
         ping_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        if decoder.ping_payload().is_some() {
+            ping_tick.tick().await;
+        }
 
         let ping_payload = decoder.ping_payload();
 
@@ -155,6 +165,11 @@ pub async fn run_ws(
                     match msg {
                         Message::Text(text) => {
                             let _ = decoder.on_text(&text, &bus)?;
+                            if let Some(reply) = decoder.outbound_reply(&text) {
+                                if write.send(Message::Text(reply.into())).await.is_err() {
+                                    break 'conn "reply send failed".into();
+                                }
+                            }
                         }
                         Message::Ping(payload) => {
                             if write.send(Message::Pong(payload)).await.is_err() {
@@ -162,7 +177,12 @@ pub async fn run_ws(
                             }
                         }
                         Message::Pong(_) => {}
-                        Message::Close(_) => break 'conn "server closed".into(),
+                        Message::Close(frame) => {
+                            let detail = frame
+                                .map(|f| format!("{} {:?}", f.code, f.reason))
+                                .unwrap_or_else(|| "no frame".into());
+                            break 'conn format!("server closed ({detail})").into();
+                        }
                         _ => {}
                     }
                 }

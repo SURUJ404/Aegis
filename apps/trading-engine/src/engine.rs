@@ -23,7 +23,7 @@ use lq_market_data::adapters::{binance, bybit, okx};
 use lq_market_data::ws_client::{run_ws, WsConfig};
 use lq_orderbook::analytics::{AnalyticsConfig, MarketStateEngine};
 use lq_orderbook::engine::BookStore;
-use lq_persistence::{PersistenceSink, PostgresStore};
+use lq_persistence::{PersistenceSink, PostgresStore, RedisHotStateSink};
 use lq_risk::{RiskDecision, RiskEngine};
 use lq_simulator::{SimulatedFeed, SyntheticDataConfig};
 use lq_strategy::{MarketMakingStrategy, StrategyEngine};
@@ -224,6 +224,14 @@ pub async fn run(cfg: EngineConfig) -> anyhow::Result<()> {
             }
             Err(e) => tracing::warn!(err = %e, "postgres unavailable; persistence disabled"),
         }
+
+        match RedisHotStateSink::spawn(Arc::clone(&bus), &cfg.persistence.redis_url).await {
+            Ok(sink) => {
+                let _sink = sink;
+                tracing::info!("redis hot state enabled");
+            }
+            Err(e) => tracing::warn!(err = %e, "redis unavailable; hot state disabled"),
+        }
     }
 
     tracing::info!(symbols = ?cfg.symbols, venues = ?cfg.venues, "trading engine started");
@@ -246,6 +254,7 @@ pub async fn run(cfg: EngineConfig) -> anyhow::Result<()> {
             }
             Some(event) = exec_sub.recv() => {
                 metrics.record_execution(&event);
+                state.apply_execution_event(&event);
                 PositionManager::on_execution_event(&state, &event);
                 strategies.on_execution_event(&event);
             }

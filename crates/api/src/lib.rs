@@ -8,7 +8,9 @@
 use std::sync::Arc;
 
 use axum::extract::State;
-use axum::http::StatusCode;
+use axum::http::header::ORIGIN;
+use axum::http::{HeaderValue, Method, StatusCode};
+use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
@@ -45,7 +47,33 @@ pub fn build_router(state: ApiState) -> Router {
         .route("/api/v1/control/stop", post(publish_stop))
         .route("/api/v1/control/reset", post(publish_reset))
         .route("/api/v1/control/kill", post(publish_kill))
+        .layer(axum::middleware::from_fn(cors))
         .with_state(state)
+}
+
+/// Permissive CORS for the web dashboard. The control plane is intentionally
+/// unauthenticated (it is a local/paper tool); keep it bound to a private
+/// interface in production and front it with auth if exposed.
+async fn cors(request: axum::extract::Request, next: Next) -> Response {
+    let method = request.method().clone();
+    let origin = request.headers().get(ORIGIN).cloned();
+    let mut response = next.run(request).await;
+
+    if let Some(origin) = origin {
+        let headers = response.headers_mut();
+        headers.insert(
+            "access-control-allow-origin",
+            HeaderValue::from_str(origin.to_str().unwrap_or("*")).unwrap_or(HeaderValue::from_static("*")),
+        );
+        headers.insert("access-control-allow-methods", HeaderValue::from_static("GET, POST, OPTIONS"));
+        headers.insert("access-control-allow-headers", HeaderValue::from_static("content-type, authorization"));
+        headers.insert("access-control-max-age", HeaderValue::from_static("600"));
+        if method == Method::OPTIONS {
+            headers.insert("access-control-allow-credentials", HeaderValue::from_static("true"));
+            *response.status_mut() = StatusCode::NO_CONTENT;
+        }
+    }
+    response
 }
 
 /// One-shot aggregate view of engine state.

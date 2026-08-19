@@ -11,10 +11,12 @@
 
 pub mod postgres;
 pub mod redis;
+pub mod redis_sink;
 pub mod sink;
 pub mod store;
 
 pub use postgres::PostgresStore;
 pub use redis::RedisHotState;
+pub use redis_sink::RedisHotStateSink;
 pub use sink::PersistenceSink;
 pub use store::{ExecutionStore, MarketDataStore, StoreError};

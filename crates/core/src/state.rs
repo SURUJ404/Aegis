@@ -9,11 +9,12 @@ use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
 use std::sync::Arc;
 
 use dashmap::DashMap;
-use lq_types::{Exchange, Symbol, TimestampMs};
+use lq_types::{Exchange, OrderStatus, Symbol, TimestampMs};
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::event::ExecutionEvent;
 use crate::models::{Execution, Inventory, MarketState, Order, Position};
 
 /// High-level risk status, updated by the risk engine.
@@ -92,6 +93,63 @@ impl EngineState {
     pub fn update_position(&self, position: Position) {
         let key = (position.venue, position.symbol.clone());
         self.positions.insert(key, position);
+    }
+
+    /// Reconcile the observable order projection with an execution event.
+    pub fn apply_execution_event(&self, event: &ExecutionEvent) {
+        match event {
+            ExecutionEvent::New { order_id, .. } => {
+                self.set_order_status(*order_id, OrderStatus::Submitted);
+            }
+            ExecutionEvent::Acknowledged { order_id, .. } => {
+                self.set_order_status(*order_id, OrderStatus::Acknowledged);
+            }
+            ExecutionEvent::CancelRequested { order_id, .. } => {
+                self.set_order_status(*order_id, OrderStatus::CancelRequested);
+            }
+            ExecutionEvent::Cancelled { order_id, .. } => {
+                self.set_order_status(*order_id, OrderStatus::Cancelled);
+            }
+            ExecutionEvent::Rejected { order_id, .. } => {
+                self.set_order_status(*order_id, OrderStatus::Rejected);
+            }
+            ExecutionEvent::Expired { order_id, .. } => {
+                self.set_order_status(*order_id, OrderStatus::Expired);
+            }
+            ExecutionEvent::Fill(f) => {
+                let Some(mut order) = self.orders.get_mut(&f.order_id) else {
+                    return;
+                };
+                let prev_filled = order.filled_quantity;
+                order.filled_quantity = order.filled_quantity + f.qty;
+                order.avg_fill_price = Some(match order.avg_fill_price {
+                    Some(prev) => {
+                        let total = prev_filled + f.qty;
+                        if total.is_zero() {
+                            prev
+                        } else {
+                            (prev * prev_filled + f.price * f.qty) / total
+                        }
+                    }
+                    None => f.price,
+                });
+                order.status = if order.remaining().is_zero() {
+                    OrderStatus::Filled
+                } else {
+                    OrderStatus::PartiallyFilled
+                };
+                order.updated_at = f.event_ts;
+            }
+            ExecutionEvent::Trade { .. } => {}
+        }
+    }
+
+    fn set_order_status(&self, order_id: Uuid, status: OrderStatus) {
+        let Some(mut order) = self.orders.get_mut(&order_id) else {
+            return;
+        };
+        order.status = status;
+        order.updated_at = TimestampMs::now();
     }
 }
 

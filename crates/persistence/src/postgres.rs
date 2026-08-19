@@ -23,7 +23,7 @@ impl PostgresStore {
 
     /// Create the schema if it does not exist.
     pub async fn migrate(&self) -> Result<(), StoreError> {
-        sqlx::query(
+        sqlx::raw_sql(
             r#"
             CREATE TABLE IF NOT EXISTS market_data (
                 id       BIGSERIAL PRIMARY KEY,

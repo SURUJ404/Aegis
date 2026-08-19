@@ -58,8 +58,11 @@ rust_decimal = { version = "1", features = ["serde", "maths"] }
 rust_decimal_macros = "1"
 
 # HTTP / WS clients
-reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
+reqwest = { version = "0.12", features = ["json", "rustls-tls-ring"] }
 axum = "0.8"
+
+# TLS (force a single rustls crypto provider so TLS doesn't panic at runtime)
+rustls = { version = "0.23", features = ["ring"] }
 
 # Persistence
 sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "chrono", "uuid", "rust_decimal"] }

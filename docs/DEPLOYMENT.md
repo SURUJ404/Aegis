@@ -27,7 +27,9 @@ Binaries: `trading-engine`, `market-data-service`, `simulate`, `backtest`,
 `docker/docker-compose.yml` runs the full stack:
 
 - `postgres` (persistence), `redis` (hot state) — default creds `lq:lq`
-- `trading-engine` with `PERSISTENCE_ENABLED=1`
+- `trading-engine` with `persistence.enabled = true`
+- `dashboard` (nginx serving the Vite dashboard, proxying `/api` to the
+  engine) on `:18000`
 - `prometheus` scraping `trading-engine:9100`
 - `grafana` on `:3000`
 

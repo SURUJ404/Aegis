@@ -25,6 +25,7 @@ by thin application binaries:
 | `backtest` | app | Deterministic backtest runner |
 | `simulate` | app | Standalone paper-exchange simulator |
 | `api-server` | app | Standalone control-plane API server |
+| `dashboard` | web | React/Vite control dashboard over the REST API |
 
 ## Quick start
 
@@ -43,6 +44,28 @@ cargo run -p trading-engine --release
 # Standalone simulator and market-data collector
 cargo run -p simulator --release
 cargo run -p market-data-service --release
+```
+
+## Web dashboard
+
+A React/Vite dashboard (`web/`) visualizes engine state and drives the
+control plane. It polls `/api/v1/state` and posts to the control endpoints;
+decimal fields render with full precision.
+
+```sh
+# Dev (proxy to the engine API on :8080)
+cd web
+npm install
+npm run dev          # http://localhost:5173
+
+# Or run the whole stack with Docker (engine + API + dashboard +
+# Postgres + Redis + Prometheus + Grafana)
+docker compose -f docker/docker-compose.yml up --build
+#   http://localhost:18000   dashboard
+#   http://localhost:18080   engine API
+#   http://localhost:19100   engine metrics
+#   http://localhost:9090    Prometheus
+#   http://localhost:3000    Grafana
 ```
 
 ## Design principles

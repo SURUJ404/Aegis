@@ -35,3 +35,8 @@ Thumbs.db
 
 # Criterion
 /target/criterion/
+
+# Web dashboard
+/web/node_modules/
+/web/dist/
+/web/*.tsbuildinfo

@@ -8,7 +8,7 @@
 //!   snapshot each time (idempotent, no sequence bookkeeping needed).
 //! - `trade` carries `m` (is buyer the maker) to derive aggressor side.
 //! - App ping: server sends `{"method":"ping"}`; client must reply
-//!   `{"method":"pong"}`. We also heartbeat proactively.
+//!   `{"method":"pong"}` (see `outbound_reply`). We do not send client pings.
 
 use std::sync::Arc;
 
@@ -146,7 +146,18 @@ impl FeedDecoder for BinanceDecoder {
     }
 
     fn ping_payload(&self) -> Option<String> {
-        Some(r#"{"method":"ping"}"#.to_string())
+        // Binance does not expect client JSON pings; it pings us and expects a
+        // pong reply (see `outbound_reply`).
+        None
+    }
+
+    fn outbound_reply(&self, text: &str) -> Option<String> {
+        let value: Value = serde_json::from_str(text).ok()?;
+        if value.get("method").and_then(Value::as_str) == Some("ping") {
+            Some(r#"{"method":"pong"}"#.to_string())
+        } else {
+            None
+        }
     }
 
     fn on_text(&mut self, text: &str, _bus: &EventBus) -> anyhow::Result<bool> {
