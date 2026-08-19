@@ -21,6 +21,7 @@ FROM debian:bookworm-slim AS runtime
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /out/app /usr/local/bin/app
+COPY docker/config/lq.toml /config/lq.toml
 ENV LQ_CONFIG=/config/lq.toml
 EXPOSE 8080 9100
 CMD ["/usr/local/bin/app"]

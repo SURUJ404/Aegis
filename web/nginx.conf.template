@@ -4,15 +4,17 @@ server {
     root /usr/share/nginx/html;
     index index.html;
 
-    # Engine control-plane API lives in the trading-engine service.
+    # Engine control-plane API. Set ENGINE_API_HOST to the reachable hostname
+    # of the trading engine (e.g. "trading-engine" in docker-compose, the
+    # Railway service name, or Fly's "<app>.internal").
     location /api/ {
-        proxy_pass http://trading-engine:8080;
+        proxy_pass http://${ENGINE_API_HOST}:8080;
         proxy_set_header Host $host;
         proxy_read_timeout 60s;
     }
 
     location = /healthz {
-        proxy_pass http://trading-engine:8080;
+        proxy_pass http://${ENGINE_API_HOST}:8080;
         proxy_set_header Host $host;
     }
 

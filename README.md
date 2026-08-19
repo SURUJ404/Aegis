@@ -68,6 +68,12 @@ docker compose -f docker/docker-compose.yml up --build
 #   http://localhost:3000    Grafana
 ```
 
+For the same stack on a container platform: `deploy/fly/` (Fly.io,
+`fly.toml` + managed Postgres/Redis) and `deploy/railway/` (bundled
+`railway.json` + Postgres/Redis plugins). The image picks up
+`DATABASE_URL`/`REDIS_URL` and the dashboard proxies the API via
+`ENGINE_API_HOST`.
+
 ## Design principles
 
 - **Explicit configuration.** Every knob lives in a TOML file

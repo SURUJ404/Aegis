@@ -84,6 +84,8 @@ services:
       context: ../web
       dockerfile: Dockerfile
     image: lq/dashboard:0.1.0
+    environment:
+      ENGINE_API_HOST: trading-engine
     ports:
       - "18000:80"
     depends_on:

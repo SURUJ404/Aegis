@@ -1,0 +1,37 @@
+# Fly.io config for the trading engine.
+#
+#   fly launch --name aegis-engine --no-deploy --region iad --config deploy/fly/engine/fly.toml
+#   fly postgres create            # managed Postgres -> copy the connection string
+#   fly redis create               # managed Redis    -> copy the URL
+#   fly secrets set DATABASE_URL=... REDIS_URL=...
+#   fly deploy --config deploy/fly/engine/fly.toml
+app = "aegis-engine"
+primary_region = "iad"
+
+[build]
+  context = "../../.."
+  dockerfile = "docker/Dockerfile"
+  build_args = { BIN = "trading-engine" }
+
+[env]
+  LQ_PERSISTENCE_ENABLED = "true"
+  # DATABASE_URL / REDIS_URL are set via `fly secrets set`
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    interval = "10s"
+    timeout = "3s"
+    grace_period = "45s"
+    method = "GET"
+    path = "/healthz"
+
+# Fly scrapes the engine's Prometheus endpoint and exposes it in Fly's Grafana.
+[metrics]
+  port = 9100
+  path = "/metrics"

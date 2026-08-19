@@ -1,0 +1,29 @@
+# Fly.io config for the web dashboard.
+#
+#   fly launch --name aegis-dashboard --no-deploy --region iad --config deploy/fly/dashboard/fly.toml
+#   fly secrets set ENGINE_API_HOST=aegis-engine.internal
+#   fly deploy --config deploy/fly/dashboard/fly.toml
+app = "aegis-dashboard"
+primary_region = "iad"
+
+[build]
+  context = "../../web"
+  dockerfile = "Dockerfile"
+
+[env]
+  # The engine is reached over Fly's private network (<app>.internal).
+  ENGINE_API_HOST = "aegis-engine.internal"
+
+[http_service]
+  internal_port = 80
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    interval = "10s"
+    timeout = "3s"
+    grace_period = "10s"
+    method = "GET"
+    path = "/"

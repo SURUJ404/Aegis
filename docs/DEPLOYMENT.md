@@ -59,6 +59,39 @@ kubectl port-forward svc/prometheus 9090:9090   # optional
 
 Liveness: `/healthz`. Readiness: `GET /api/v1/state` returns 200.
 
+## Cloud: Fly.io / Railway
+
+Both platforms run the long-lived engine container and the dashboard behind
+nginx. Deployment guides and configs:
+
+- `deploy/fly/` — `fly.toml` for `aegis-engine` + `aegis-dashboard`, managed
+  Postgres (`fly postgres`) and Redis (`fly redis`), Fly-scraped metrics.
+- `deploy/railway/` — Postgres + Redis plugins, engine + dashboard services
+  from the bundled `railway.json` files.
+
+Two knobs make the same image work everywhere, so no config editing is needed
+per platform:
+
+- **Env overrides.** `EngineConfig::from_toml_with_env` lets
+  `DATABASE_URL`/`POSTGRES_URL`, `REDIS_URL`, `LQ_PERSISTENCE_ENABLED`,
+  `API_BIND`, `METRICS_BIND` and `LQ_LOG_LEVEL` override the baked-in
+  `docker/config/lq.toml` at boot. The runtime image now ships that config at
+  `/config/lq.toml`.
+- **Dashboard proxy.** The nginx template (`web/nginx.conf.template`)
+  substitutes `ENGINE_API_HOST` at container start — set it to the engine's
+  internal hostname (`trading-engine` in compose, `<app>.internal` on Fly, the
+  Railway private domain).
+
+```sh
+# Fly.io (see deploy/fly/README.md)
+fly launch --name aegis-engine --no-deploy --config deploy/fly/engine/fly.toml
+fly secrets set DATABASE_URL=... REDIS_URL=... --config deploy/fly/engine/fly.toml
+fly deploy --config deploy/fly/engine/fly.toml
+
+# Railway: connect the repo, add Postgres + Redis plugins, then the two
+# services (root `/` for engine, `web` for dashboard); see deploy/railway/README.md
+```
+
 ## Config injection
 
 - File: `--config /config/lq.toml` (or `LQ_CONFIG` env var).

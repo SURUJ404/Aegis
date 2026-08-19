@@ -45,6 +45,37 @@ impl EngineConfig {
     pub fn from_toml(s: &str) -> Result<Self, toml::de::Error> {
         toml::from_str(s)
     }
+
+    /// Load from a TOML string, then apply environment overrides for
+    /// deployment-critical settings. Platform-provided connection strings
+    /// (e.g. Railway/Fly Postgres and Redis) win over the file so one config
+    /// can be baked into an image and adapted at boot.
+    pub fn from_toml_with_env(s: &str) -> Result<Self, toml::de::Error> {
+        let mut cfg: Self = toml::from_str(s)?;
+        cfg.apply_env_overrides();
+        Ok(cfg)
+    }
+
+    fn apply_env_overrides(&mut self) {
+        if let Ok(v) = std::env::var("LQ_PERSISTENCE_ENABLED") {
+            self.persistence.enabled = v == "1" || v.eq_ignore_ascii_case("true");
+        }
+        if let Ok(v) = std::env::var("POSTGRES_URL").or_else(|_| std::env::var("DATABASE_URL")) {
+            self.persistence.postgres_url = v;
+        }
+        if let Ok(v) = std::env::var("REDIS_URL") {
+            self.persistence.redis_url = v;
+        }
+        if let Ok(v) = std::env::var("API_BIND") {
+            self.api.bind = v;
+        }
+        if let Ok(v) = std::env::var("METRICS_BIND") {
+            self.telemetry.metrics_bind = v;
+        }
+        if let Ok(v) = std::env::var("LQ_LOG_LEVEL") {
+            self.telemetry.log_level = v;
+        }
+    }
 }
 
 impl Default for EngineConfig {
@@ -305,6 +336,31 @@ mod tests {
         let cfg = EngineConfig::from_toml(toml).unwrap();
         assert_eq!(cfg.mode, Mode::Live);
         assert_eq!(cfg.venues, vec![Exchange::Okx]);
+    }
+
+    #[test]
+    fn env_overrides_win_over_file() {
+        std::env::set_var("POSTGRES_URL", "postgres://override");
+        std::env::set_var("REDIS_URL", "redis://override");
+        std::env::set_var("API_BIND", "0.0.0.0:9999");
+        std::env::set_var("LQ_PERSISTENCE_ENABLED", "true");
+        let toml = r#"
+            [persistence]
+            enabled = false
+            postgres_url = "postgres://file"
+            redis_url = "redis://file"
+            [api]
+            bind = "0.0.0.0:8080"
+        "#;
+        let cfg = EngineConfig::from_toml_with_env(toml).unwrap();
+        assert!(cfg.persistence.enabled);
+        assert_eq!(cfg.persistence.postgres_url, "postgres://override");
+        assert_eq!(cfg.persistence.redis_url, "redis://override");
+        assert_eq!(cfg.api.bind, "0.0.0.0:9999");
+        std::env::remove_var("POSTGRES_URL");
+        std::env::remove_var("REDIS_URL");
+        std::env::remove_var("API_BIND");
+        std::env::remove_var("LQ_PERSISTENCE_ENABLED");
     }
 }
 

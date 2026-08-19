@@ -33,7 +33,7 @@ fn load_config(cli: &Cli) -> anyhow::Result<EngineConfig> {
     match &cli.config {
         Some(path) => {
             let text = std::fs::read_to_string(path)?;
-            EngineConfig::from_toml(&text).map_err(|e| anyhow::anyhow!("config parse error: {e}"))
+            EngineConfig::from_toml_with_env(&text).map_err(|e| anyhow::anyhow!("config parse error: {e}"))
         }
         None => Ok(EngineConfig::default()),
     }
