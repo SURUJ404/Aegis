@@ -1,5 +1,6 @@
 //! The backtest runner: replays events through the engine stack.
 
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use lq_core::bus::EventBus;
@@ -67,7 +68,6 @@ pub struct BacktestRunner {
     strategies: StrategyEngine,
     risk: RiskEngine,
     venue: Arc<PaperExecutionVenue>,
-    bus: Arc<EventBus>,
     seq: u64,
     filled: u64,
     rejected: u64,
@@ -80,6 +80,7 @@ pub struct BacktestRunner {
     last_price: Option<Price>,
     vol_ema: f64,
     last_quote_ts: Option<TimestampMs>,
+    reject_breakdown: BTreeMap<String, u64>,
 }
 
 impl BacktestRunner {
@@ -109,7 +110,11 @@ impl BacktestRunner {
 
         let venue = Arc::new(
             PaperExecutionVenue::with_seed(cfg.venue, paper, bus.clone(), cfg.seed, false)
-                .with_price_provider(price_provider),
+                .with_price_provider(price_provider)
+                // Fills are applied synchronously from `report_fill`'s return
+                // value; the async broker delivery would otherwise reorder
+                // inventory updates between runs.
+                .with_publishing(false),
         );
 
         let mut strategies = StrategyEngine::new();
@@ -128,7 +133,6 @@ impl BacktestRunner {
             strategies,
             risk,
             venue,
-            bus,
             seq: 0,
             filled: 0,
             rejected: 0,
@@ -141,6 +145,7 @@ impl BacktestRunner {
             last_price: None,
             vol_ema: 0.0,
             last_quote_ts: None,
+            reject_breakdown: BTreeMap::new(),
         }
     }
 
@@ -162,21 +167,11 @@ pub fn config(&self) -> &BacktestConfig {
     /// Replay a recorded event sequence. Deterministic: same input events
     /// produce the same result.
     pub async fn run_async(&mut self, events: &[MarketEvent]) -> BacktestResult {
-        let mut exec_sub = self.bus.execution().subscribe();
-
-for event in events {
+        for event in events {
             self.seq += 1;
             self.on_market_event(event).await;
 
-            // Drain any bus events (accepted/cancelled/market-order fills)
-            // published during this step. Yielding first lets the broker task
-            // fan them out on the current-thread runtime.
-            tokio::task::yield_now().await;
-            while let Ok(ev) = exec_sub.try_recv() {
-                self.on_execution_event(&ev).await;
-            }
-
-            if self.seq % self.cfg.equity_sample_every == 0 {
+            if self.seq.is_multiple_of(self.cfg.equity_sample_every) {
                 self.sample_equity();
             }
         }
@@ -185,13 +180,17 @@ for event in events {
         self.sample_equity();
 
         let metrics = self.finish_metrics();
-        BacktestResult {
+        let mut result = BacktestResult {
             events_seen: self.seq,
             orders_placed: self.placed,
             rejected_orders: self.rejected,
             open_orders_at_end: self.venue.working_order_ids().len(),
             metrics,
-        }
+            rejects_by_code: BTreeMap::new(),
+            equity_curve: std::mem::take(&mut self.samples),
+        };
+        result.rejects_by_code = std::mem::take(&mut self.reject_breakdown);
+        result
     }
 
     async fn on_market_event(&mut self, event: &MarketEvent) {
@@ -275,7 +274,7 @@ for event in events {
                             Some(bid.price),
                             bid.qty,
                         );
-                        self.place_checked(&mut o, market.mid).await;
+                        self.place_checked(&mut o, market.mid, market.event_ts).await;
                     }
                     if let Some(ask) = intent.ask {
                         let mut o = Order::new(
@@ -286,7 +285,7 @@ for event in events {
                             Some(ask.price),
                             ask.qty,
                         );
-                        self.place_checked(&mut o, market.mid).await;
+                        self.place_checked(&mut o, market.mid, market.event_ts).await;
                     }
                 }
                 StrategyDecision::MarketOrder(sig) => {
@@ -301,7 +300,7 @@ for event in events {
                         Some(sig.price),
                         sig.qty,
                     );
-                    self.place_checked(&mut o, market.mid).await;
+                    self.place_checked(&mut o, market.mid, market.event_ts).await;
                 }
                 StrategyDecision::StandDown { .. } => {
                     let _ = self.venue.cancel_all(Some(&self.cfg.symbol)).await;
@@ -311,8 +310,8 @@ for event in events {
         }
     }
 
-async fn place_checked(&mut self, order: &mut Order, mark: Price) {
-        match self.risk.validate_order(order, mark) {
+async fn place_checked(&mut self, order: &mut Order, mark: Price, now: TimestampMs) {
+        match self.risk.validate_order_at(order, mark, now) {
             RiskDecision::Allow => {
                 self.place(order).await;
             }
@@ -324,10 +323,12 @@ async fn place_checked(&mut self, order: &mut Order, mark: Price) {
             }
             RiskDecision::Reject(r) => {
                 self.rejected += 1;
+                *self.reject_breakdown.entry(r.code.as_str().to_string()).or_default() += 1;
                 tracing::debug!(order = %order.order_id, code = ?r.code, "risk reject");
             }
-            RiskDecision::Halt(_) => {
+            RiskDecision::Halt(r) => {
                 self.rejected += 1;
+                *self.reject_breakdown.entry(r.code.as_str().to_string()).or_default() += 1;
             }
         }
     }
@@ -375,6 +376,10 @@ async fn place_checked(&mut self, order: &mut Order, mark: Price) {
             if remaining <= Qty::ZERO {
                 continue;
             }
+            // `report_fill` returns the fill event; apply it directly to the
+            // engine state so inventory updates are synchronous and the replay
+            // is deterministic. Publishing to the bus and draining asynchronously
+            // would let the broker deliver fills at different events between runs.
             if let Ok(fill) = self.venue.report_fill(id, limit, remaining, false).await {
                 self.on_execution_event(&ExecutionEvent::Fill(fill)).await;
             }
@@ -506,6 +511,9 @@ async fn place_checked(&mut self, order: &mut Order, mark: Price) {
         } else {
             0.0
         };
+        // Net PnL is relative to the starting capital, not the first sampled
+        // equity point (which may already include realized/unrealized moves).
+        m.net_pnl = m.final_equity - self.cfg.initial_capital;
         m
     }
 }
@@ -519,11 +527,13 @@ mod tests {
     use rust_decimal_macros::dec;
 
     fn cfg() -> BacktestConfig {
-        let mut mm = MarketMakingConfig::default();
-        mm.quote_qty = dec!(0.1);
-        mm.half_spread_bps = 5.0;
-        mm.vol_scale_half_spread = false;
-        mm.quote_refresh_ms = 300;
+        let mm = MarketMakingConfig {
+            quote_qty: dec!(0.1),
+            half_spread_bps: 5.0,
+            vol_scale_half_spread: false,
+            quote_refresh_ms: 300,
+            ..MarketMakingConfig::default()
+        };
         BacktestConfig {
             spec: InstrumentSpec::new(dec!(0.1), dec!(0.01)),
             paper: PaperSimConfig {

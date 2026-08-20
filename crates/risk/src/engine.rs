@@ -5,7 +5,7 @@
 //! from [`EngineState`] (positions, orders, realized PnL) and enforces the
 //! configured limits.
 
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, VecDeque};
 use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
 
 use lq_core::config::RiskConfig;
@@ -30,6 +30,8 @@ pub struct RiskEngine {
     /// Total rejects emitted (observability).
     rejects: Mutex<u64>,
     halts: Mutex<u64>,
+    /// Reject count by reason code, for diagnostics and backtests.
+    reject_reasons: Mutex<BTreeMap<String, u64>>,
 }
 
 impl RiskEngine {
@@ -43,7 +45,13 @@ impl RiskEngine {
             order_times: Mutex::new(VecDeque::new()),
             rejects: Mutex::new(0),
             halts: Mutex::new(0),
+            reject_reasons: Mutex::new(BTreeMap::new()),
         }
+    }
+
+    fn record_reject(&self, code: RiskCode) {
+        *self.rejects.lock() += 1;
+        *self.reject_reasons.lock().entry(code.as_str().to_string()).or_default() += 1;
     }
 
     /// Engage or release the kill switch.
@@ -82,10 +90,21 @@ impl RiskEngine {
         (*self.rejects.lock(), *self.halts.lock())
     }
 
-    /// Validate a resting/working order against every configured limit.
+    /// Validate a resting/working order against every configured limit, using
+    /// the wall clock for rate limiting. Backtests must use
+    /// [`validate_order_at`](Self::validate_order_at) with simulated market
+    /// time so runs stay deterministic.
     pub fn validate_order(&self, order: &Order, mark: Decimal) -> RiskDecision {
+        self.validate_order_at(order, mark, TimestampMs::now())
+    }
+
+    /// Validate an order against every configured limit with an explicit
+    /// "now" timestamp. The timestamp drives the sliding-window rate limiter
+    /// only; all other checks are time-independent. Passing the market event
+    /// timestamp in a backtest keeps the run byte-for-byte reproducible.
+    pub fn validate_order_at(&self, order: &Order, mark: Decimal, now: TimestampMs) -> RiskDecision {
         if self.kill_switch.load(AtomicOrdering::SeqCst) {
-            *self.rejects.lock() += 1;
+            self.record_reject(RiskCode::KillSwitchEngaged);
             return RiskDecision::Reject(RiskReason::new(
                 RiskCode::KillSwitchEngaged,
                 self.halt_reason().unwrap_or_else(|| "kill switch engaged".into()),
@@ -93,6 +112,7 @@ impl RiskEngine {
         }
 
         if self.is_venue_reconnecting(order.venue) {
+            self.record_reject(RiskCode::VenueReconnecting);
             return RiskDecision::Reject(RiskReason::new(
                 RiskCode::VenueReconnecting,
                 format!("venue {} is reconnecting", order.venue),
@@ -100,7 +120,7 @@ impl RiskEngine {
         }
 
         if !self.cfg.max_order_qty.is_zero() && order.quantity > self.cfg.max_order_qty {
-            *self.rejects.lock() += 1;
+            self.record_reject(RiskCode::MaxOrderSize);
             return RiskDecision::Reduce {
                 qty: self.cfg.max_order_qty,
                 reason: RiskReason::new(
@@ -117,7 +137,7 @@ impl RiskEngine {
             if !mark.is_zero() {
                 let deviation = ((price - mark).abs() / mark * Decimal::from(10_000)).as_f64();
                 if deviation > self.cfg.max_price_deviation_bps {
-                    *self.rejects.lock() += 1;
+                    self.record_reject(RiskCode::MaxPriceDeviation);
                     return RiskDecision::Reject(RiskReason::new(
                         RiskCode::MaxPriceDeviation,
                         format!("price {price} deviates {deviation:.2}bps from mark {mark}"),
@@ -126,7 +146,7 @@ impl RiskEngine {
             }
             let notional = price * order.quantity;
             if notional > self.cfg.max_notional {
-                *self.rejects.lock() += 1;
+                self.record_reject(RiskCode::MaxNotional);
                 return RiskDecision::Reject(RiskReason::new(
                     RiskCode::MaxNotional,
                     format!("notional {notional} > max {}", self.cfg.max_notional),
@@ -148,7 +168,7 @@ impl RiskEngine {
         };
         let projected = inv + sign * order.quantity;
         if projected.abs() > self.cfg.max_position_qty {
-            *self.rejects.lock() += 1;
+            self.record_reject(RiskCode::MaxPosition);
             return RiskDecision::Reject(RiskReason::new(
                 RiskCode::MaxPosition,
                 format!(
@@ -167,7 +187,7 @@ impl RiskEngine {
             .map(|p| p.notional(mark))
             .sum::<Decimal>();
         if exposure + (order.quantity * mark) > self.cfg.max_exposure_per_venue {
-            *self.rejects.lock() += 1;
+            self.record_reject(RiskCode::MaxExposurePerVenue);
             return RiskDecision::Reject(RiskReason::new(
                 RiskCode::MaxExposurePerVenue,
                 format!(
@@ -189,7 +209,7 @@ impl RiskEngine {
             })
             .count();
         if open as u32 >= self.cfg.max_open_orders {
-            *self.rejects.lock() += 1;
+            self.record_reject(RiskCode::MaxOpenOrders);
             return RiskDecision::Reject(RiskReason::new(
                 RiskCode::MaxOpenOrders,
                 format!("{open} open orders >= max {}", self.cfg.max_open_orders),
@@ -197,8 +217,8 @@ impl RiskEngine {
         }
 
         // Order rate limiting (sliding 1s window).
-        if !self.rate_allowed() {
-            *self.rejects.lock() += 1;
+        if !self.rate_allowed(now) {
+            self.record_reject(RiskCode::MaxOrderRate);
             return RiskDecision::Reject(RiskReason::new(
                 RiskCode::MaxOrderRate,
                 format!("order rate > {}/s", self.cfg.max_order_rate_per_sec),
@@ -215,6 +235,7 @@ impl RiskEngine {
         if session_pnl < -self.cfg.max_daily_loss {
             self.set_kill_switch(true, format!("daily loss limit hit: {session_pnl}"));
             *self.halts.lock() += 1;
+            self.record_reject(RiskCode::MaxDailyLoss);
             return RiskDecision::Halt(RiskReason::new(
                 RiskCode::MaxDailyLoss,
                 format!("session PnL {session_pnl} below daily loss limit"),
@@ -238,17 +259,23 @@ impl RiskEngine {
         RiskDecision::Allow
     }
 
-    fn rate_allowed(&self) -> bool {
-        let now = TimestampMs::now().as_u64();
+    fn rate_allowed(&self, now: TimestampMs) -> bool {
         let mut times = self.order_times.lock();
-        while times.front().map(|t| now - t.as_u64() >= 1000).unwrap_or(false) {
+        while times.front().map(|t| now.as_u64() - t.as_u64() >= 1000).unwrap_or(false) {
             times.pop_front();
         }
         if times.len() as f64 >= self.cfg.max_order_rate_per_sec {
             return false;
         }
-        times.push_back(TimestampMs(now));
+        times.push_back(now);
         true
+    }
+
+    /// Reject counts keyed by reason code, sorted by code name. Used by the
+    /// control API and backtest diagnostics to explain *why* orders are being
+    /// rejected rather than just how many.
+    pub fn reject_breakdown(&self) -> Vec<(String, u64)> {
+        self.reject_reasons.lock().iter().map(|(k, v)| (k.clone(), *v)).collect()
     }
 }
 

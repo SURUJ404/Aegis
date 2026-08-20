@@ -35,6 +35,14 @@ struct Cli {
     /// Emit the result as JSON.
     #[arg(long)]
     json: bool,
+
+    /// Write the JSON result to this file (implies `--json`).
+    #[arg(long, env = "LQ_BACKTEST_OUT")]
+    out: Option<String>,
+
+    /// Write the equity curve to a CSV file (events,equity).
+    #[arg(long)]
+    csv: Option<String>,
 }
 
 fn load_config(cli: &Cli) -> anyhow::Result<EngineConfig> {
@@ -96,6 +104,11 @@ fn print_summary(result: &BacktestResult) {
     println!("  events            : {}", result.events_seen);
     println!("  orders placed     : {}", result.orders_placed);
     println!("  rejected          : {}", result.rejected_orders);
+    if result.rejected_orders > 0 && !result.rejects_by_code.is_empty() {
+        for (code, count) in &result.rejects_by_code {
+            println!("    - {code:<24}: {count}");
+        }
+    }
     println!("  open orders at end: {}", result.open_orders_at_end);
     println!("  fills             : {}", m.fills);
     println!("  round-trip trades : {}", m.trades);
@@ -120,10 +133,31 @@ async fn main() -> anyhow::Result<()> {
     let mut runner = BacktestRunner::new(backtest_config(&cfg, cli.seed));
     let result = runner.run_async(&events).await;
 
-    if cli.json {
-        println!("{}", serde_json::to_string_pretty(&result)?);
+    if let Some(csv_path) = &cli.csv {
+        write_equity_csv(csv_path, &result.equity_curve)?;
+        println!("equity curve written to {csv_path}");
+    }
+
+    if cli.json || cli.out.is_some() {
+        let json = serde_json::to_string_pretty(&result)?;
+        if let Some(out) = &cli.out {
+            std::fs::write(out, json)?;
+            println!("result written to {out}");
+        } else {
+            println!("{json}");
+        }
     } else {
         print_summary(&result);
+    }
+    Ok(())
+}
+
+fn write_equity_csv(path: &str, curve: &[lq_backtest::EquitySample]) -> anyhow::Result<()> {
+    use std::io::Write;
+    let mut f = std::io::BufWriter::new(std::fs::File::create(path)?);
+    writeln!(f, "events,equity")?;
+    for s in curve {
+        writeln!(f, "{},{}", s.events, s.equity)?;
     }
     Ok(())
 }

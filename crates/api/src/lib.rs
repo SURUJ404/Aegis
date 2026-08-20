@@ -25,17 +25,29 @@ use serde::Serialize;
 pub struct ApiState {
     pub state: EngineState,
     pub bus: Arc<EventBus>,
+    /// Optional bearer token. When set, all API routes (except `/healthz`)
+    /// require `Authorization: Bearer <token>`.
+    pub token: Option<String>,
 }
 
 impl ApiState {
     pub fn new(state: EngineState, bus: Arc<EventBus>) -> Self {
-        Self { state, bus }
+        Self {
+            state,
+            bus,
+            token: None,
+        }
+    }
+
+    pub fn with_token(mut self, token: Option<String>) -> Self {
+        self.token = token;
+        self
     }
 }
 
 /// Build the full control-plane router.
 pub fn build_router(state: ApiState) -> Router {
-    Router::new()
+    let router = Router::new()
         .route("/healthz", get(healthz))
         .route("/api/v1/state", get(state_summary))
         .route("/api/v1/positions", get(list_positions))
@@ -47,8 +59,57 @@ pub fn build_router(state: ApiState) -> Router {
         .route("/api/v1/control/stop", post(publish_stop))
         .route("/api/v1/control/reset", post(publish_reset))
         .route("/api/v1/control/kill", post(publish_kill))
-        .layer(axum::middleware::from_fn(cors))
-        .with_state(state)
+        .layer(axum::middleware::from_fn(cors));
+
+    let router = if state.token.is_some() {
+        router
+            .layer(axum::middleware::from_fn_with_state(
+                state.clone(),
+                auth,
+            ))
+            .layer(axum::middleware::from_fn(cors))
+    } else {
+        router.layer(axum::middleware::from_fn(cors))
+    };
+
+    router.with_state(state)
+}
+
+/// Reject requests without a valid `Authorization: Bearer <token>` header when
+/// the API is configured with a token. `/healthz` is excluded so liveness
+/// probes work without credentials.
+async fn auth(
+    State(api): State<ApiState>,
+    request: axum::extract::Request,
+    next: Next,
+) -> Response {
+    // Liveness probes must work without credentials.
+    if request.uri().path() == "/healthz" {
+        return next.run(request).await;
+    }
+    // CORS preflight requests never carry credentials; let the CORS layer
+    // answer them.
+    if request.method() == Method::OPTIONS {
+        return next.run(request).await;
+    }
+    let expected = api.token.as_deref().unwrap_or_default();
+    let header = request
+        .headers()
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok());
+    let valid = header
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .map(|token| token == expected)
+        .unwrap_or(false);
+    if valid {
+        next.run(request).await
+    } else {
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({ "error": "unauthorized" })),
+        )
+            .into_response()
+    }
 }
 
 /// Permissive CORS for the web dashboard. The control plane is intentionally
@@ -290,5 +351,55 @@ mod tests {
         assert_eq!(res.status(), HttpStatus::ACCEPTED);
         let received = sub.recv().await;
         assert!(matches!(received, Some(ControlEvent::KillSwitch { reason }) if reason == "test halt"));
+    }
+
+    #[tokio::test]
+    async fn auth_requires_bearer_token() {
+        let bus = Arc::new(EventBus::new());
+        let api = ApiState::new(EngineState::new(), bus).with_token(Some("s3cret".into()));
+        let app = build_router(api);
+
+        // No token -> 401 on a protected route.
+        let res = app
+            .clone()
+            .oneshot(Request::builder().uri("/api/v1/state").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(res.status(), HttpStatus::UNAUTHORIZED);
+
+        // Wrong token -> 401.
+        let res = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/state")
+                    .header("authorization", "Bearer wrong")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), HttpStatus::UNAUTHORIZED);
+
+        // Correct token -> 200.
+        let res = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/state")
+                    .header("authorization", "Bearer s3cret")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), HttpStatus::OK);
+
+        // Healthz stays open.
+        let res = app
+            .oneshot(Request::builder().uri("/healthz").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(res.status(), HttpStatus::OK);
     }
 }

@@ -89,6 +89,7 @@ pub struct PaperExecutionVenue {
     prices: Mutex<Option<PriceProvider>>,
     fills: AtomicU64,
     rejects: AtomicU64,
+    publish: bool,
 }
 
 impl PaperExecutionVenue {
@@ -121,11 +122,20 @@ impl PaperExecutionVenue {
             prices: Mutex::new(None),
             fills: AtomicU64::new(0),
             rejects: AtomicU64::new(0),
+            publish: true,
         }
     }
 
     pub fn with_price_provider(mut self, provider: PriceProvider) -> Self {
         *self.prices.get_mut() = Some(provider);
+        self
+    }
+
+    /// Toggle bus event publishing. Backtests disable publishing and apply
+    /// fill events synchronously from `report_fill`'s return value, which
+    /// removes the (non-deterministic) async broker delivery from the replay.
+    pub fn with_publishing(mut self, publish: bool) -> Self {
+        self.publish = publish;
         self
     }
 
@@ -135,14 +145,20 @@ impl PaperExecutionVenue {
         *self.prices.lock() = Some(provider);
     }
 
-    /// Snapshot of working (non-terminal) order ids.
+    /// Snapshot of working (non-terminal) order ids, sorted for a
+    /// deterministic iteration order. HashMap iteration order is randomized
+    /// per process, which would make backtest fill ordering (and thus
+    /// average-entry blending) non-reproducible.
     pub fn working_order_ids(&self) -> Vec<Uuid> {
-        self.orders
+        let mut ids: Vec<Uuid> = self
+            .orders
             .lock()
             .iter()
             .filter(|(_, o)| !o.order.status.is_terminal())
             .map(|(id, _)| *id)
-            .collect()
+            .collect();
+        ids.sort_unstable();
+        ids
     }
 
     /// Cloned view of a tracked order (for the paper exchange's matching).
@@ -200,8 +216,10 @@ impl PaperExecutionVenue {
             self.fills.fetch_add(1, AtomicOrdering::Relaxed);
             self.apply_fill_to_position(&symbol, po.order.side, price, qty, fee);
             let side = po.order.side;
-            let event = ExecutionEvent::Fill(fill.clone());
-            let _ = self.bus.execution().try_publish(event);
+            if self.publish {
+                let event = ExecutionEvent::Fill(fill.clone());
+                let _ = self.bus.execution().try_publish(event);
+            }
             (side, now, fill)
         };
         let _ = (side, event_ts);
@@ -272,12 +290,14 @@ impl ExecutionVenue for PaperExecutionVenue {
         if self.rng.lock().gen_range(0.0..1.0) < self.cfg.reject_prob {
             self.rejects.fetch_add(1, AtomicOrdering::Relaxed);
             order.status = OrderStatus::Rejected;
-            let _ = self.bus.execution().try_publish(ExecutionEvent::Rejected {
-                order_id: order.order_id,
-                venue: self.venue,
-                reason: "simulated venue rejection".into(),
-                ts: TimestampMs::now(),
-            });
+            if self.publish {
+                let _ = self.bus.execution().try_publish(ExecutionEvent::Rejected {
+                    order_id: order.order_id,
+                    venue: self.venue,
+                    reason: "simulated venue rejection".into(),
+                    ts: TimestampMs::now(),
+                });
+            }
             return Err(VenueError::Rejected("simulated venue rejection".into()));
         }
 
@@ -328,7 +348,9 @@ impl ExecutionVenue for PaperExecutionVenue {
             )?;
             let fill = OrderStateMachine::to_fill_event(&execution);
             self.fills.fetch_add(1, AtomicOrdering::Relaxed);
-            let _ = self.bus.execution().try_publish(ExecutionEvent::Fill(fill));
+            if self.publish {
+                let _ = self.bus.execution().try_publish(ExecutionEvent::Fill(fill));
+            }
             let status = po.order.status;
             let filled_qty = po.order.filled_quantity;
             let avg_price = po.order.avg_fill_price;
@@ -346,16 +368,18 @@ impl ExecutionVenue for PaperExecutionVenue {
         }
 
         // Resting limit order.
-        let _ = self.bus.execution().try_publish(ExecutionEvent::New {
-            order_id: order.order_id,
-            venue: self.venue,
-            ts: TimestampMs::now(),
-        });
-        let _ = self.bus.execution().try_publish(ExecutionEvent::Acknowledged {
-            order_id: order.order_id,
-            venue: self.venue,
-            ts: TimestampMs::now(),
-        });
+        if self.publish {
+            let _ = self.bus.execution().try_publish(ExecutionEvent::New {
+                order_id: order.order_id,
+                venue: self.venue,
+                ts: TimestampMs::now(),
+            });
+            let _ = self.bus.execution().try_publish(ExecutionEvent::Acknowledged {
+                order_id: order.order_id,
+                venue: self.venue,
+                ts: TimestampMs::now(),
+            });
+        }
 
         let status = po.order.status;
         self.orders.lock().insert(order.order_id, po);
@@ -376,18 +400,22 @@ impl ExecutionVenue for PaperExecutionVenue {
         if po.order.status.is_terminal() {
             return Err(VenueError::UnknownOrder(order_id));
         }
-        let _ = self.bus.execution().try_publish(ExecutionEvent::CancelRequested {
-            order_id,
-            venue: self.venue,
-            ts: TimestampMs::now(),
-        });
+        if self.publish {
+            let _ = self.bus.execution().try_publish(ExecutionEvent::CancelRequested {
+                order_id,
+                venue: self.venue,
+                ts: TimestampMs::now(),
+            });
+        }
         po.order.status = OrderStatus::Cancelled;
         po.order.updated_at = TimestampMs::now();
-        let _ = self.bus.execution().try_publish(ExecutionEvent::Cancelled {
-            order_id,
-            venue: self.venue,
-            ts: TimestampMs::now(),
-        });
+        if self.publish {
+            let _ = self.bus.execution().try_publish(ExecutionEvent::Cancelled {
+                order_id,
+                venue: self.venue,
+                ts: TimestampMs::now(),
+            });
+        }
         Ok(())
     }
 

@@ -121,7 +121,7 @@ impl EngineState {
                     return;
                 };
                 let prev_filled = order.filled_quantity;
-                order.filled_quantity = order.filled_quantity + f.qty;
+                order.filled_quantity += f.qty;
                 order.avg_fill_price = Some(match order.avg_fill_price {
                     Some(prev) => {
                         let total = prev_filled + f.qty;

@@ -6,14 +6,14 @@
 //! (quote timing, inventory skew) stays consistent without locks.
 
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use dashmap::DashMap;
 use lq_api::ApiState;
 use lq_core::bus::EventBus;
 use lq_core::config::{EngineConfig, Mode};
 use lq_core::event::{ControlEvent, FeedStatus, MarketEvent};
-use lq_core::models::{Order, StrategyDecision};
+use lq_core::models::{LatencyMeasurement, LatencyStage, Order, StrategyDecision};
 use lq_core::state::EngineState;
 use lq_exchange::spec::InstrumentSpec;
 use lq_execution::paper::PaperExecutionVenue;
@@ -28,7 +28,7 @@ use lq_risk::{RiskDecision, RiskEngine};
 use lq_simulator::{SimulatedFeed, SyntheticDataConfig};
 use lq_strategy::{MarketMakingStrategy, StrategyEngine};
 use lq_telemetry::{Metrics, MetricsServer};
-use lq_types::{Exchange, OrderStatus, OrderType, Symbol};
+use lq_types::{Exchange, OrderStatus, OrderType, Symbol, TimestampMs};
 use rust_decimal_macros::dec;
 
 /// Entry point: build every component and run the event loop.
@@ -90,7 +90,9 @@ pub async fn run(cfg: EngineConfig) -> anyhow::Result<()> {
     // Control-plane API.
     {
         let api_bind = cfg.api.bind.clone();
-        let app = lq_api::build_router(ApiState::new(state.clone(), Arc::clone(&bus)));
+        let app = lq_api::build_router(
+            ApiState::new(state.clone(), Arc::clone(&bus)).with_token(cfg.api.token.clone()),
+        );
         handles.push(tokio::spawn(async move {
             let listener = match tokio::net::TcpListener::bind(&api_bind).await {
                 Ok(l) => l,
@@ -297,6 +299,14 @@ fn cfg_symbol_seed(symbol: &Symbol) -> u64 {
     })
 }
 
+fn record_stage(metrics: &Metrics, stage: LatencyStage, started: Instant, event_ts: TimestampMs) {
+    metrics.record_latency(&LatencyMeasurement {
+        stage,
+        nanos: started.elapsed().as_nanos() as u64,
+        event_ts,
+    });
+}
+
 fn sync_risk_state(state: &EngineState, risk: &RiskEngine) {
     let mut status = state.risk_snapshot();
     status.halted = risk.is_halted();
@@ -341,10 +351,14 @@ async fn on_market_event(
         }
     };
 
+    let loop_start = Instant::now();
+    let event_ts = event.event_ts();
+
     let outcome = books.ingest(event);
     if matches!(outcome, lq_orderbook::engine::IngestOutcome::Gap { .. }) {
         tracing::warn!(venue = %venue, symbol = %symbol, ?outcome, "sequence gap; awaiting resync");
     }
+    record_stage(metrics, LatencyStage::OrderBookUpdate, loop_start, event_ts);
 
     if let MarketEvent::Trade(trade) = event {
         if let Some(mut engine) = analytics.get_mut(&(venue, symbol.clone())) {
@@ -360,6 +374,7 @@ async fn on_market_event(
         return;
     };
     let ms = engine.compute(&book, event.event_ts());
+    record_stage(metrics, LatencyStage::MarketState, loop_start, event_ts);
     state.market_state.insert(key.clone(), ms.clone());
 
     // Run the strategy on the fresh state and act on its decisions.
@@ -373,15 +388,21 @@ async fn on_market_event(
         let position_ref = position.as_ref();
         let decisions =
             strategies.on_market_state(&ms, inventory, position_ref, state.is_halted(), true);
+        record_stage(metrics, LatencyStage::Strategy, loop_start, event_ts);
         for decision in decisions {
-            apply_decision(&decision, venues, risk, state).await;
+            apply_decision(&decision, venues, risk, state, ms.event_ts, metrics).await;
         }
     }
 
     // Match resting orders against the (possibly moved) book.
     sweep_working_orders(venues, books).await;
 
+    // Keep the observable risk status (kill switch / halt reason) in sync with
+    // the risk engine, which may trip itself (e.g. daily-loss limit).
+    sync_risk_state(state, risk);
+
     metrics.observe_state(state);
+    record_stage(metrics, LatencyStage::EndToEnd, loop_start, event_ts);
 }
 
 async fn apply_decision(
@@ -389,6 +410,8 @@ async fn apply_decision(
     venues: &DashMap<Exchange, Arc<PaperExecutionVenue>>,
     risk: &RiskEngine,
     state: &EngineState,
+    now: TimestampMs,
+    metrics: &Metrics,
 ) {
     match decision {
         StrategyDecision::Quote(intent) => {
@@ -412,6 +435,8 @@ async fn apply_decision(
                     leg.qty,
                     risk,
                     state,
+                    now,
+                    metrics,
                 )
                 .await;
             }
@@ -429,6 +454,8 @@ async fn apply_decision(
                 signal.qty,
                 risk,
                 state,
+                now,
+                metrics,
             )
             .await;
         }
@@ -451,6 +478,8 @@ async fn place_checked(
     qty: lq_types::Qty,
     risk: &RiskEngine,
     state: &EngineState,
+    now: TimestampMs,
+    metrics: &Metrics,
 ) {
     let mark = state
         .market_state
@@ -459,14 +488,15 @@ async fn place_checked(
         .unwrap_or(price);
 
     let mut order = Order::new(ven.venue(), symbol.clone(), side, order_type, Some(price), qty);
-    match risk.validate_order(&order, mark) {
+    let risk_start = Instant::now();
+    match risk.validate_order_at(&order, mark, now) {
         RiskDecision::Allow => {
-            place(ven, &mut order, state).await;
+            place(ven, &mut order, state, metrics, now).await;
         }
         RiskDecision::Reduce { qty, .. } => {
             if qty > lq_types::Qty::ZERO {
                 order.quantity = qty;
-                place(ven, &mut order, state).await;
+                place(ven, &mut order, state, metrics, now).await;
             }
         }
         RiskDecision::Reject(reason) => {
@@ -476,9 +506,17 @@ async fn place_checked(
             tracing::error!(detail = %reason.detail, "risk halt");
         }
     }
+    record_stage(metrics, LatencyStage::Risk, risk_start, now);
 }
 
-async fn place(ven: &PaperExecutionVenue, order: &mut Order, state: &EngineState) {
+async fn place(
+    ven: &PaperExecutionVenue,
+    order: &mut Order,
+    state: &EngineState,
+    metrics: &Metrics,
+    now: TimestampMs,
+) {
+    let submit_start = Instant::now();
     state.orders.insert(order.order_id, order.clone());
     match ven.place_order(order).await {
         Ok(placement) => {
@@ -490,6 +528,7 @@ async fn place(ven: &PaperExecutionVenue, order: &mut Order, state: &EngineState
             tracing::warn!(order = %order.order_id, err = %e, "order placement failed");
         }
     }
+    record_stage(metrics, LatencyStage::ExecutionSubmit, submit_start, now);
 }
 
 /// Fill resting orders whose limit price is now crossed by the book.

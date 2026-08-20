@@ -141,8 +141,24 @@ let inv_qty = ctx
         let ask_off_dec =
             Decimal::from_f64_retain(ask_off).unwrap_or_default() / Decimal::from(10_000);
 
-        let bid_price = state.mid * (Decimal::ONE - bid_off_dec);
-        let ask_price = state.mid * (Decimal::ONE + ask_off_dec);
+        let mut bid_price = state.mid * (Decimal::ONE - bid_off_dec);
+        let mut ask_price = state.mid * (Decimal::ONE + ask_off_dec);
+
+        // Never quote worse than the current touch. A quote resting outside
+        // the best bid/ask sits behind the whole book and can never fill;
+        // clamping it to the touch (or letting inventory skew pull it inside)
+        // is where a real market maker rests.
+        if state.best_bid > Decimal::ZERO {
+            bid_price = bid_price.max(state.best_bid);
+        }
+        if state.best_ask > Decimal::ZERO {
+            ask_price = ask_price.min(state.best_ask);
+        }
+
+        // Defensive: a clamped quote must never cross the book.
+        if bid_on && ask_on && bid_price >= ask_price {
+            return StrategyDecision::Hold;
+        }
 
         let size = self.cfg.quote_qty * self.size_multiplier(state);
 

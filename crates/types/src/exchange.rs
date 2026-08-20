@@ -103,7 +103,7 @@ mod tests {
     fn parses_exchange_names() {
         assert_eq!("okx".parse::<Exchange>().unwrap(), Exchange::Okx);
         assert_eq!("BINANCE".parse::<Exchange>().unwrap(), Exchange::Binance);
-        assert!(matches!("nyse".parse::<Exchange>(), Err(_)));
+        assert!("nyse".parse::<Exchange>().is_err());
     }
 
     #[test]

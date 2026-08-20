@@ -42,6 +42,23 @@ cargo bench --workspace
 - Add a test for every fix (see the crate test suites) and keep backtests
   deterministic.
 
+## Deterministic backtests
+
+A backtest must be byte-identical run-to-run. The guarantees that make this
+hold:
+
+- The synthetic market and the paper venue share a single seeded RNG.
+- Rejection is forced to 0 and latency is disabled for the venue.
+- The venue's bus publishing is disabled (`PaperExecutionVenue` created with
+  `.with_publishing(false)` in the runner), so fills are applied
+  synchronously in the engine loop instead of arriving via the async
+  `EventBus` fan-out. The bus broker's delivery timing is not deterministic,
+  so relying on it would perturb inventory updates and cascade into different
+  quotes and fill prices.
+
+Preserve these properties when touching `lq-backtest`, `lq-execution` or
+`lq-simulator`.
+
 ## Pitfalls
 
 - **`EventBus::new()` spawns broker tasks** and must run inside a Tokio
