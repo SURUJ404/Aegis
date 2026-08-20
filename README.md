@@ -109,6 +109,11 @@ cargo clippy --workspace --all-targets
 cargo bench --workspace
 ```
 
+## Contributors
+
+- [Swapish](https://github.com/Swapish) — backtest determinism, latency
+  telemetry, API auth, clippy cleanup
+
 ## License
 
 Apache-2.0.
