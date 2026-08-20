@@ -120,7 +120,9 @@ The application binaries compose these crates:
    The result is `Allow`, `Reduce`, `Reject` or `Halt`.
 6. **Execution.** `PaperExecutionVenue` (or a real venue later) places,
    tracks, and fills orders. Fill events drive `PositionManager` (the system of
-   record for PnL) via the execution topic.
+   record for PnL) via the execution topic. In backtests the venue's bus
+   publishing is disabled and fills are applied synchronously to the engine
+   loop, so execution-event fan-out timing can never perturb the result.
 7. **Observation.** Every event and state change feeds `Metrics`; the control
    plane reads `EngineState` directly.
 

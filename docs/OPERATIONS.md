@@ -61,6 +61,7 @@ json_logs = false
 
 [api]
 bind = "0.0.0.0:8080"
+token = ""                # optional: require Authorization: Bearer <token>
 
 [persistence]
 enabled = false
@@ -88,11 +89,20 @@ stale_after_ms = 5000
 
 ```
 backtest --events 20000 --seed 13 [--config path.toml] [--json]
+         [--out result.json] [--csv equity.csv]
 ```
 
-Output (or JSON with `--json`): events seen, orders placed, rejections,
-open orders at end, fills, round-trip trades, win rate, total fees, net PnL,
-max drawdown, annualized Sharpe, final equity.
+Options: `--config` (TOML, or `LQ_CONFIG`), `--events`, `--seed`, `--json`
+(emit the result as JSON), `--out <file>` (write the JSON result; implies
+`--json`), `--csv <file>` (write the equity curve as `events,equity` rows).
+
+Output (or JSON with `--json`/`--out`): events seen, orders placed,
+rejections (with a per-reason-code breakdown), open orders at end, fills,
+round-trip trades, win rate, total fees, net PnL, max drawdown, annualized
+Sharpe, final equity. Runs are deterministic: the paper venue is created with
+rejection disabled, latency off, publishing bypassed (fills are applied
+synchronously), and a seeded RNG, so identical inputs produce byte-identical
+results.
 
 ## Control-plane API
 
@@ -111,6 +121,14 @@ Served by `trading-engine` and `api-server`:
 | POST | `/api/v1/control/stop` | stop strategies + cancel all |
 | POST | `/api/v1/control/reset` | release kill switch |
 | POST | `/api/v1/control/kill` | engage kill switch (body `{"reason": "..."}`) |
+
+### Authentication
+
+If `api.token` is set (or the `API_TOKEN` environment variable is set, which
+overrides it), every `/api/*` endpoint requires an
+`Authorization: Bearer <token>` header; requests without a valid token get
+`401`. `GET /healthz` (liveness probe) and CORS preflight `OPTIONS` requests
+are always exempt, so load balancers and the web dashboard keep working.
 
 ## Metrics
 
@@ -143,3 +161,16 @@ A Prometheus + Grafana stack is included in `docker/docker-compose.yml`.
 - **Order rate limit.** `risk.max_order_rate_per_sec` counts order
   submissions per second. A quote refresh places 2 orders per refresh; with
   `quote_refresh_ms = 250` that is 8 orders/s — under the default 20/s.
+
+## Environment variables
+
+Every config field can be overridden by `LQ_<SECTION>_<KEY>` or
+`LQ_<KEY>`-style variables (`EngineConfig::from_toml_with_env`); the notable
+ones are:
+
+| Variable | Overrides | Meaning |
+|---|---|---|
+| `LQ_CONFIG` | — | path to the TOML config for any binary |
+| `API_TOKEN` | `[api] token` | bearer token required by the control-plane API |
+| `LQ_BACKTEST_OUT` | `--out` | default JSON output file for `backtest` |
+| `LQ_BACKTEST_JSON` | `--json` | emit backtest JSON |

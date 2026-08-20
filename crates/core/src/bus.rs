@@ -87,10 +87,13 @@ pub enum PublishPolicy {
 }
 
 /// A subscription guard. Removes its registration from the topic when dropped.
+type SubscriberList<T> = Arc<Mutex<Vec<(u64, mpsc::Sender<T>)>>>;
+
+/// A subscription guard. Removes its registration from the topic when dropped.
 pub struct TopicSubscriber<T> {
     rx: mpsc::Receiver<T>,
     id: u64,
-    subs: Arc<Mutex<Vec<(u64, mpsc::Sender<T>)>>>,
+    subs: SubscriberList<T>,
 }
 
 impl<T> TopicSubscriber<T> {
@@ -123,7 +126,7 @@ pub struct Topic<T> {
     inbound: mpsc::Sender<T>,
     policy: PublishPolicy,
     state: Arc<TopicState>,
-    subs: Arc<Mutex<Vec<(u64, mpsc::Sender<T>)>>>,
+    subs: SubscriberList<T>,
     next_sub_id: AtomicU64,
     /// Kept alive for the topic's lifetime; aborts itself when the inbound
     /// channel closes (i.e. when the topic is dropped).
@@ -136,7 +139,7 @@ impl<T: Clone + Send + 'static> Topic<T> {
     pub fn new(name: &'static str, capacity: usize, policy: PublishPolicy) -> Self {
         let (inbound, mut rx) = mpsc::channel::<T>(capacity);
         let state = Arc::new(TopicState::new());
-        let subs: Arc<Mutex<Vec<(u64, mpsc::Sender<T>)>>> = Arc::new(Mutex::new(Vec::new()));
+        let subs: SubscriberList<T> = Arc::new(Mutex::new(Vec::new()));
 
         let broker_subs = Arc::clone(&subs);
         let broker_state = Arc::clone(&state);

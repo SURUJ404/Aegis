@@ -69,8 +69,11 @@ impl Default for SyntheticDataConfig {
             depth_levels: 10,
             level_qty: Decimal::from(10),
             qty_jitter: 0.3,
-            max_move_ticks: 1,
-trade_prob: 0.3,
+            // Multi-tick moves per update, like a real crypto book: a quote
+            // resting at the touch gets crossed within a few ticks, so the
+            // paper market is actually tradeable (and backtests produce fills).
+            max_move_ticks: 4,
+            trade_prob: 0.3,
             trade_qty: Decimal::new(5, 1),
             resync_every_ticks: 50,
             seed: 42,
@@ -372,8 +375,10 @@ mod tests {
     use super::*;
 
     fn gen(seed: u64) -> SyntheticMarketData {
-        let mut cfg = SyntheticDataConfig::default();
-        cfg.seed = seed;
+        let cfg = SyntheticDataConfig {
+            seed,
+            ..SyntheticDataConfig::default()
+        };
         SyntheticMarketData::new(
             Exchange::Simulated,
             Symbol("BTC-USDT".into()),

@@ -10,19 +10,14 @@ use lq_types::{Amount, Exchange, Qty};
 use serde::Deserialize;
 
 /// Engine operating mode.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Mode {
     /// Simulated orders only. Default.
+    #[default]
     Paper,
     /// Live order routing. Requires `EXCHANGE_LIVE=true` and credentials.
     Live,
-}
-
-impl Default for Mode {
-    fn default() -> Self {
-        Self::Paper
-    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -69,6 +64,9 @@ impl EngineConfig {
         if let Ok(v) = std::env::var("API_BIND") {
             self.api.bind = v;
         }
+        if let Ok(v) = std::env::var("API_TOKEN") {
+            self.api.token = (!v.is_empty()).then_some(v);
+        }
         if let Ok(v) = std::env::var("METRICS_BIND") {
             self.telemetry.metrics_bind = v;
         }
@@ -95,18 +93,10 @@ impl Default for EngineConfig {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct StrategyConfig {
     pub market_making: MarketMakingConfig,
-}
-
-impl Default for StrategyConfig {
-    fn default() -> Self {
-        Self {
-            market_making: MarketMakingConfig::default(),
-        }
-    }
 }
 
 /// Parameters for the baseline market-making strategy.
@@ -256,12 +246,16 @@ impl Default for TelemetryConfig {
 #[serde(default)]
 pub struct ApiConfig {
     pub bind: String,
+    /// Optional bearer token for the control-plane HTTP API. When `Some`, every
+    /// request must carry `Authorization: Bearer <token>`.
+    pub token: Option<String>,
 }
 
 impl Default for ApiConfig {
     fn default() -> Self {
         Self {
             bind: "0.0.0.0:8080".to_string(),
+            token: None,
         }
     }
 }

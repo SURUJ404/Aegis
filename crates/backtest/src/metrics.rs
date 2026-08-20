@@ -108,6 +108,11 @@ pub struct BacktestResult {
     pub rejected_orders: u64,
     pub open_orders_at_end: usize,
     pub metrics: PerfMetrics,
+    /// Reject counts by risk-code name, e.g. `max_order_rate -> 13314`.
+    /// Empty when nothing was rejected.
+    pub rejects_by_code: std::collections::BTreeMap<String, u64>,
+    /// Mark-to-market equity curve (sampled per `equity_sample_every` events).
+    pub equity_curve: Vec<EquitySample>,
 }
 
 impl BacktestResult {

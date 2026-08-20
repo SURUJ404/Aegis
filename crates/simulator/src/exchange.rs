@@ -81,15 +81,11 @@ impl PaperExchange {
     /// Apply a market event and then sweep resting orders for fills.
     pub async fn on_market_event(&mut self, event: &MarketEvent) -> Result<(), VenueError> {
         match event {
-            MarketEvent::Snapshot(s) => {
-                if s.symbol == self.symbol {
-                    self.book.write().apply_snapshot(s);
-                }
+            MarketEvent::Snapshot(s) if s.symbol == self.symbol => {
+                self.book.write().apply_snapshot(s);
             }
-            MarketEvent::Delta(d) => {
-                if d.symbol == self.symbol {
-                    let _ = self.book.write().apply_delta(d);
-                }
+            MarketEvent::Delta(d) if d.symbol == self.symbol => {
+                let _ = self.book.write().apply_delta(d);
             }
             _ => {}
         }
@@ -131,26 +127,24 @@ impl PaperExchange {
 
             // Queue position: only a fraction of the order is at the front.
             let effective_qty =
-                order.quantity * Decimal::from_f64_retain(self.cfg.queue_position.max(0.0).min(1.0))
+                order.quantity * Decimal::from_f64_retain(self.cfg.queue_position.clamp(0.0, 1.0))
                     .unwrap_or_default();
             if effective_qty <= Qty::ZERO {
                 continue;
             }
 
-            let mut rng = self.rng.lock();
-            if rng.gen::<f64>() > self.cfg.fill_fraction {
-                continue;
-            }
-            let fill_qty = if rng.gen::<f64>() < self.cfg.partial_fill_prob {
-                let frac = self
-                    .cfg
-                    .partial_fill_fraction
-                    .clamp(0.0, 1.0);
-                effective_qty * Decimal::from_f64_retain(frac).unwrap_or_default()
-            } else {
-                effective_qty
+            let fill_qty = {
+                let mut rng = self.rng.lock();
+                if rng.gen::<f64>() > self.cfg.fill_fraction {
+                    continue;
+                }
+                if rng.gen::<f64>() < self.cfg.partial_fill_prob {
+                    let frac = self.cfg.partial_fill_fraction.clamp(0.0, 1.0);
+                    effective_qty * Decimal::from_f64_retain(frac).unwrap_or_default()
+                } else {
+                    effective_qty
+                }
             };
-            drop(rng);
 
             // Never fill more than the remaining unfilled quantity.
             let remaining = (order.quantity - order.filled_quantity).max(Qty::ZERO);

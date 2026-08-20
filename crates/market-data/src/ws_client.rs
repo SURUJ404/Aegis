@@ -104,7 +104,7 @@ pub async fn run_ws(
 
         // (Re)subscribe.
         for frame in decoder.subscribe_frames() {
-            if let Err(e) = write.send(Message::Text(frame.into())).await {
+            if let Err(e) = write.send(Message::Text(frame)).await {
                 tracing::warn!(feed = decoder.name(), err = %e, "subscribe send failed");
                 break;
             }
@@ -129,11 +129,12 @@ pub async fn run_ws(
                 tick.tick().await;
                 let last = watch_last.load(AtomicOrdering::Relaxed);
                 let now = TimestampMs::now().as_u64();
-                if last > 0 && now.saturating_sub(last) > watch_cfg.stale_after_ms {
-                    if !watch_stale.swap(true, AtomicOrdering::Relaxed) {
-                        tracing::warn!(feed = "stale-event", "feed stale");
-                        let _ = watch_bus.market().try_publish(stale_event.clone());
-                    }
+                if last > 0
+                    && now.saturating_sub(last) > watch_cfg.stale_after_ms
+                    && !watch_stale.swap(true, AtomicOrdering::Relaxed)
+                {
+                    tracing::warn!(feed = "stale-event", "feed stale");
+                    let _ = watch_bus.market().try_publish(stale_event.clone());
                 }
             }
         });
@@ -166,7 +167,7 @@ pub async fn run_ws(
                         Message::Text(text) => {
                             let _ = decoder.on_text(&text, &bus)?;
                             if let Some(reply) = decoder.outbound_reply(&text) {
-                                if write.send(Message::Text(reply.into())).await.is_err() {
+                                if write.send(Message::Text(reply)).await.is_err() {
                                     break 'conn "reply send failed".into();
                                 }
                             }
@@ -181,14 +182,14 @@ pub async fn run_ws(
                             let detail = frame
                                 .map(|f| format!("{} {:?}", f.code, f.reason))
                                 .unwrap_or_else(|| "no frame".into());
-                            break 'conn format!("server closed ({detail})").into();
+                            break 'conn format!("server closed ({detail})");
                         }
                         _ => {}
                     }
                 }
                 _ = ping_tick.tick(), if ping_payload.is_some() => {
                     if let Some(p) = &ping_payload {
-                        if write.send(Message::Text(p.clone().into())).await.is_err() {
+                        if write.send(Message::Text(p.clone())).await.is_err() {
                             break 'conn "ping send failed".into();
                         }
                     }

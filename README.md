@@ -40,6 +40,7 @@ cargo run -p trading-engine --release
 #   GET  http://localhost:8080/api/v1/state
 #   POST http://localhost:8080/api/v1/control/start
 #   GET  http://localhost:9100/metrics
+# (set API_TOKEN=... in the environment to require a bearer token on /api/*)
 
 # Standalone simulator and market-data collector
 cargo run -p simulator --release
@@ -79,14 +80,16 @@ For the same stack on a container platform: `deploy/fly/` (Fly.io,
 - **Explicit configuration.** Every knob lives in a TOML file
   (`EngineConfig`) with no hidden assumptions. See `docs/OPERATIONS.md`.
 - **Deterministic backtests.** Latency and rejection are disabled in
-  backtests; the venue RNG is seeded. Same input events → same result.
+  backtests; the venue RNG is seeded and execution-event publishing is
+  bypassed so fills apply synchronously. Same input events → byte-identical
+  result.
 - **Strategy / risk / execution separation.** Strategies are pure (no
   networking, no I/O). Risk sits between a decision and an order. Execution
   is the only thing that talks to a venue.
 - **Bounded topics.** Market data can be dropped under load (sequence gaps
   recover it); execution and control events block until published.
 - **Observability first.** Every binary emits structured logs, Prometheus
-  metrics, and a health/state API.
+  metrics (including per-stage pipeline latency), and a health/state API.
 
 ## Documentation
 
