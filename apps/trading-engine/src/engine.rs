@@ -358,7 +358,7 @@ async fn on_market_event(
     if matches!(outcome, lq_orderbook::engine::IngestOutcome::Gap { .. }) {
         tracing::warn!(venue = %venue, symbol = %symbol, ?outcome, "sequence gap; awaiting resync");
     }
-    record_stage(metrics, LatencyStage::OrderBookUpdate, loop_start, event_ts);
+    record_stage(metrics, LatencyStage::BookIngest, loop_start, event_ts);
 
     if let MarketEvent::Trade(trade) = event {
         if let Some(mut engine) = analytics.get_mut(&(venue, symbol.clone())) {
@@ -374,7 +374,7 @@ async fn on_market_event(
         return;
     };
     let ms = engine.compute(&book, event.event_ts());
-    record_stage(metrics, LatencyStage::MarketState, loop_start, event_ts);
+    record_stage(metrics, LatencyStage::BookAnalytics, loop_start, event_ts);
     state.market_state.insert(key.clone(), ms.clone());
 
     // Run the strategy on the fresh state and act on its decisions.
@@ -388,7 +388,7 @@ async fn on_market_event(
         let position_ref = position.as_ref();
         let decisions =
             strategies.on_market_state(&ms, inventory, position_ref, state.is_halted(), true);
-        record_stage(metrics, LatencyStage::Strategy, loop_start, event_ts);
+        record_stage(metrics, LatencyStage::StrategyDecision, loop_start, event_ts);
         for decision in decisions {
             apply_decision(&decision, venues, risk, state, ms.event_ts, metrics).await;
         }
@@ -506,7 +506,7 @@ async fn place_checked(
             tracing::error!(detail = %reason.detail, "risk halt");
         }
     }
-    record_stage(metrics, LatencyStage::Risk, risk_start, now);
+    record_stage(metrics, LatencyStage::RiskValidation, risk_start, now);
 }
 
 async fn place(

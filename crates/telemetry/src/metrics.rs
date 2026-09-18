@@ -233,21 +233,26 @@ impl Metrics {
 
     /// Record a stage latency in nanoseconds.
     pub fn record_latency(&self, measurement: &LatencyMeasurement) {
-        let stage = match measurement.stage {
-            lq_core::models::LatencyStage::ExchangeReceive => "exchange_receive",
-            lq_core::models::LatencyStage::Decode => "decode",
-            lq_core::models::LatencyStage::OrderBookUpdate => "order_book_update",
-            lq_core::models::LatencyStage::MarketState => "market_state",
-            lq_core::models::LatencyStage::Strategy => "strategy",
-            lq_core::models::LatencyStage::Risk => "risk",
-            lq_core::models::LatencyStage::ExecutionSubmit => "execution_submit",
-            lq_core::models::LatencyStage::ExecutionAck => "execution_ack",
-            lq_core::models::LatencyStage::ExecutionFill => "execution_fill",
-            lq_core::models::LatencyStage::EndToEnd => "end_to_end",
-        };
         self.latency
-            .with_label_values(&[stage])
+            .with_label_values(&[measurement.stage.as_label()])
             .observe(measurement.nanos as f64);
+    }
+
+    /// Record latency for a named pipeline stage directly (stage label + nanos).
+    pub fn record_pipeline_stage(&self, stage: &str, nanos: u64) {
+        self.latency.with_label_values(&[stage]).observe(nanos as f64);
+    }
+
+    /// Count an event by source label.
+    pub fn record_event_received(&self, source: &str) {
+        self.execution_events.with_label_values(&[source]).inc();
+    }
+
+    /// Count a sequence gap by source label.
+    pub fn record_sequence_gap(&self, source: &str) {
+        self.market_events
+            .with_label_values(&[&format!("gap:{source}")])
+            .inc();
     }
 
     /// Refresh gauges from the current [`EngineState`].

@@ -1,0 +1,24 @@
+[package]
+name = "lq-solana-execution"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Solana execution layer — order intent, transaction building, submission, reconciliation"
+
+[dependencies]
+lq-types = { path = "../../types" }
+lq-core = { path = "../../core" }
+lq-execution = { path = "../../execution" }
+lq-solana-types = { path = "../types" }
+
+tokio = { workspace = true }
+serde = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }
+uuid = { workspace = true }
+rust_decimal = { workspace = true }
+thiserror = { workspace = true }
+async-trait = { workspace = true }
+
+[lints]
+workspace = true

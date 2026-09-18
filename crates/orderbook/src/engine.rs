@@ -118,6 +118,11 @@ impl BookStore {
         self.gaps.get(&(venue, symbol.clone())).map(|g| *g).unwrap_or(0)
     }
 
+    /// Total sequence gaps across all books.
+    pub fn total_gap_count(&self) -> u64 {
+        self.gaps.iter().map(|g| *g).sum()
+    }
+
     /// Total books tracked.
     pub fn len(&self) -> usize {
         self.books.len()

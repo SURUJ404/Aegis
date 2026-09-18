@@ -4,6 +4,7 @@
 pub mod analytics;
 pub mod book;
 pub mod engine;
+pub mod replay;
 
 pub use analytics::{AnalyticsConfig, MarketStateEngine};
 pub use book::{DeltaOutcome, OrderBook, QTY_SCALE};

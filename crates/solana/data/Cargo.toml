@@ -1,0 +1,28 @@
+[package]
+name = "lq-solana-data"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Solana market data adapter — normalizes on-chain events into the Aegis event model"
+
+[dependencies]
+lq-types = { path = "../../types" }
+lq-core = { path = "../../core" }
+lq-exchange = { path = "../../exchange" }
+lq-solana-types = { path = "../types" }
+
+tokio = { workspace = true }
+tokio-stream = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }
+dashmap = { workspace = true }
+chrono = { workspace = true }
+rust_decimal = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util", "macros"] }
+
+[lints]
+workspace = true
