@@ -61,6 +61,30 @@ impl VenueMeta {
                 ws_private: "wss://stream.bybit.com/v5/private",
                 rest_base: "https://api.bybit.com",
             },
+            Exchange::RaydiumClmm => VenueMeta {
+                venue,
+                ws_market_data: "wss://api.mainnet-beta.solana.com",
+                ws_private: "",
+                rest_base: "https://api.mainnet-beta.solana.com",
+            },
+            Exchange::OrcaWhirlpools => VenueMeta {
+                venue,
+                ws_market_data: "wss://api.mainnet-beta.solana.com",
+                ws_private: "",
+                rest_base: "https://api.mainnet-beta.solana.com",
+            },
+            Exchange::Phoenix => VenueMeta {
+                venue,
+                ws_market_data: "wss://api.mainnet-beta.solana.com",
+                ws_private: "",
+                rest_base: "https://api.mainnet-beta.solana.com",
+            },
+            Exchange::OpenBook => VenueMeta {
+                venue,
+                ws_market_data: "wss://api.mainnet-beta.solana.com",
+                ws_private: "",
+                rest_base: "https://api.mainnet-beta.solana.com",
+            },
         };
         Some(meta)
     }

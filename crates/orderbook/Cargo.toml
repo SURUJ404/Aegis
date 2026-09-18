@@ -7,14 +7,14 @@ license.workspace = true
 
 [dev-dependencies]
 criterion = { workspace = true }
-tokio = { workspace = true }
+rand = { workspace = true }
 
 [[bench]]
 name = "orderbook"
 harness = false
 
 [[bench]]
-name = "orderbook_benchmarks"
+name = "comparison"
 harness = false
 
 [dependencies]
@@ -26,6 +26,3 @@ rust_decimal_macros = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 dashmap = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
-anyhow = { workspace = true }

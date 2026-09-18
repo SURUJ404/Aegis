@@ -210,6 +210,9 @@ pub async fn run(cfg: EngineConfig) -> anyhow::Result<()> {
                         }
                     }));
                 }
+                _ => {
+                    tracing::warn!(?venue, "venue not supported for live feed, skipping");
+                }
             }
         }
     }

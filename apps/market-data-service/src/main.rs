@@ -117,6 +117,10 @@ async fn main() -> anyhow::Result<()> {
             Exchange::Paper | Exchange::Simulated => {
                 continue;
             }
+            _ => {
+                tracing::warn!(?venue, "venue not supported for live feed, skipping");
+                continue;
+            }
         };
         let task_bus = Arc::clone(&bus);
         handles.push(tokio::spawn(async move {

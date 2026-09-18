@@ -1,0 +1,35 @@
+[package]
+name = "lq-solana-market-data"
+description = "Solana market data ingestion: Geyser gRPC, WebSocket logs, RPC snapshots"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+lq-types = { path = "../types" }
+lq-core = { path = "../core" }
+lq-exchange = { path = "../exchange" }
+lq-orderbook = { path = "../orderbook" }
+rust_decimal = { workspace = true }
+rust_decimal_macros = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tokio-tungstenite = { workspace = true }
+futures-util = { workspace = true }
+tracing = { workspace = true }
+async-trait = { workspace = true }
+bytes = { workspace = true }
+clap = { workspace = true }
+solana-sdk = "2.0"
+solana-client = "2.0"
+solana-account-decoder = "2.0"
+bs58 = "0.5"
+base64 = "0.22"
+tonic = { version = "0.12", features = ["tls", "tls-webpki-roots"] }
+prost = "0.12"
+
+[dev-dependencies]
+criterion = { workspace = true }

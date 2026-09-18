@@ -26,12 +26,25 @@ pub enum Exchange {
     Binance,
     /// Bybit live venue. Live order routing requires explicit opt-in.
     Bybit,
+    /// Raydium CLMM on Solana.
+    RaydiumClmm,
+    /// Orca Whirlpools on Solana.
+    OrcaWhirlpools,
+    /// Phoenix orderbook on Solana.
+    Phoenix,
+    /// OpenBook (Serum v3) on Solana.
+    OpenBook,
 }
 
 impl Exchange {
     /// Whether this venue is live (routes real money) or simulated.
     pub fn is_live(self) -> bool {
-        matches!(self, Self::Okx | Self::Binance | Self::Bybit)
+        matches!(self, Self::Okx | Self::Binance | Self::Bybit | Self::RaydiumClmm | Self::OrcaWhirlpools | Self::Phoenix | Self::OpenBook)
+    }
+
+    /// Whether this is a Solana-based venue.
+    pub fn is_solana(self) -> bool {
+        matches!(self, Self::RaydiumClmm | Self::OrcaWhirlpools | Self::Phoenix | Self::OpenBook)
     }
 
     /// The canonical short name.
@@ -42,6 +55,10 @@ impl Exchange {
             Self::Okx => "okx",
             Self::Binance => "binance",
             Self::Bybit => "bybit",
+            Self::RaydiumClmm => "raydium_clmm",
+            Self::OrcaWhirlpools => "orca_whirlpools",
+            Self::Phoenix => "phoenix",
+            Self::OpenBook => "openbook",
         }
     }
 }
@@ -62,6 +79,10 @@ impl FromStr for Exchange {
             "okx" => Ok(Self::Okx),
             "binance" => Ok(Self::Binance),
             "bybit" => Ok(Self::Bybit),
+            "raydium_clmm" | "raydium" => Ok(Self::RaydiumClmm),
+            "orca_whirlpools" | "orca" => Ok(Self::OrcaWhirlpools),
+            "phoenix" => Ok(Self::Phoenix),
+            "openbook" | "serum" => Ok(Self::OpenBook),
             other => Err(UnknownExchange(other.to_string())),
         }
     }
