@@ -19,9 +19,9 @@ pub use event::{
     ControlEvent, ExecutionEvent, MarketEvent, MarketEventKind, PublishStats,
 };
 pub use models::{
-    Execution, FillEvent, Inventory, LatencyMeasurement, LatencyStage, MarketOrderSignal,
-    MarketRegime, MarketState, MarketTick, Order, OrderBookDelta, OrderBookLevel,
-    OrderBookSnapshot, Position, Quote, QuoteIntent, QuoteLeg, StrategyDecision,
+    Execution, FillEvent, Inventory, LatencyMeasurement, LatencyRecorder, LatencyStage,
+    MarketOrderSignal, MarketRegime, MarketState, MarketTick, Order, OrderBookDelta,
+    OrderBookLevel, OrderBookSnapshot, Position, Quote, QuoteIntent, QuoteLeg, StrategyDecision,
     StrategySignal, Trade,
 };
 pub use state::EngineState;

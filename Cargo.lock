@@ -1458,6 +1458,7 @@ dependencies = [
 name = "lq-orderbook"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "criterion",
  "dashmap",
  "lq-core",
@@ -1465,7 +1466,10 @@ dependencies = [
  "lq-types",
  "rust_decimal",
  "rust_decimal_macros",
+ "serde",
+ "serde_json",
  "thiserror 2.0.20",
+ "tokio",
  "tracing",
 ]
 
@@ -1519,6 +1523,52 @@ dependencies = [
  "tokio",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "lq-solana-data"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "dashmap",
+ "lq-core",
+ "lq-exchange",
+ "lq-solana-types",
+ "lq-types",
+ "rust_decimal",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-stream",
+ "tracing",
+]
+
+[[package]]
+name = "lq-solana-execution"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "lq-core",
+ "lq-execution",
+ "lq-solana-types",
+ "lq-types",
+ "rust_decimal",
+ "serde",
+ "thiserror 2.0.20",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "lq-solana-types"
+version = "0.1.0"
+dependencies = [
+ "rust_decimal",
+ "serde",
+ "thiserror 2.0.20",
 ]
 
 [[package]]

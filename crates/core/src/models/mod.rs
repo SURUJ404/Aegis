@@ -11,7 +11,7 @@ pub mod trade;
 
 pub use book::{LevelChange, OrderBookDelta, OrderBookLevel, OrderBookSnapshot};
 pub use execution::{Execution, FillEvent};
-pub use latency::{LatencyMeasurement, LatencyStage};
+pub use latency::{LatencyMeasurement, LatencyRecorder, LatencyStage};
 pub use market_state::{MarketRegime, MarketState};
 pub use order::Order;
 pub use position::{Inventory, Position, Quote};
