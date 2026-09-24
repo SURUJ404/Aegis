@@ -15,7 +15,7 @@ This document describes the system design, component responsibilities, data flow
 |                                                                    |
 |  lq-types  lq-core  lq-exchange  lq-orderbook  lq-market-data     |
 |  lq-strategy  lq-risk  lq-execution  lq-simulator  lq-backtest    |
-|  lq-persistence  lq-telemetry  lq-api                              |
+|  lq-persistence  lq-telemetry  lq-api  lq-sequencer               |
 |  lq-solana-types  lq-solana-data  lq-solana-execution              |
 +--------------------------------------------------------------------+
                               |
@@ -55,6 +55,8 @@ lq-telemetry  (depends on lq-types, lq-core)
    |
 lq-api  (depends on lq-types, lq-core, lq-telemetry, lq-execution)
    |
+lq-sequencer  (depends on lq-types, lq-core, lq-exchange)
+   |
 lq-solana-types  (depends on lq-types, lq-core, lq-exchange)
    |
 lq-solana-data  (depends on lq-types, lq-core, lq-exchange, lq-solana-types)
@@ -68,6 +70,7 @@ lq-solana-execution  (depends on lq-types, lq-core, lq-execution, lq-solana-type
 - `lq-core` depends only on `lq-types`.
 - Strategy and risk crates depend on `lq-types` and `lq-core` only; they cannot depend on execution, persistence, or market-data. This enforces the purity constraint.
 - `lq-backtest` depends on strategy, risk, execution, and orderbook but not on market-data or persistence (it replays events directly).
+- `lq-sequencer` depends only on `lq-types`, `lq-core`, `lq-exchange` — no networking, no wall-clock in the state machine.
 - `lq-solana-*` crates depend on the corresponding base crates (`lq-types`, `lq-core`, `lq-execution`) and on each other as needed.
 
 ## Event Bus Design

@@ -1,0 +1,33 @@
+[package]
+name = "lq-sequencer"
+description = "Global monotonic sequencing, WAL, snapshots and deterministic replay for event-sourced exchange state."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+lq-types = { path = "../types" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+rust_decimal = { workspace = true }
+sha2 = { workspace = true }
+crc32fast = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+criterion = { workspace = true }
+rust_decimal_macros = { workspace = true }
+tempfile = "3"
+lq-backtest = { path = "../backtest" }
+lq-core = { path = "../core" }
+lq-exchange = { path = "../exchange" }
+lq-simulator = { path = "../simulator" }
+tokio = { workspace = true }
+lq-types = { path = "../types" }
+
+[[bench]]
+name = "sequencer"
+harness = false

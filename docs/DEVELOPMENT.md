@@ -30,6 +30,7 @@ cargo bench --workspace
 - `lq-market-data`: Binance 20-level depth decode
 - `lq-strategy`: market-making decision cost
 - `lq-risk`: order validation
+- `lq-sequencer`: WAL append, full replay, state apply
 
 ## Conventions
 
@@ -58,6 +59,19 @@ hold:
 
 Preserve these properties when touching `lq-backtest`, `lq-execution` or
 `lq-simulator`.
+
+## Deterministic exchange state (`lq-sequencer`)
+
+The sequencer is the money-path log (Stage 1). Invariants that must hold:
+
+- Same WAL/snapshot ⇒ byte-identical `StateHash` (SHA-256, `Decimal::normalize`).
+- No wall-clock, RNG, or `HashMap` iteration inside `StateMachine::apply`.
+- `ts_ms` comes from the log entry, never `now()`.
+- Recovery: load newest snapshot + replay WAL suffix must equal a full rebuild
+  from an empty log (`rebuild_empty_log`).
+
+Tests covering these live in `crates/sequencer/tests/sequencer_integration.rs`
+(proptest + backtest cross-check).
 
 ## Pitfalls
 

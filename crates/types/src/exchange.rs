@@ -13,7 +13,7 @@ use crate::instrument::Symbol;
 /// A trading venue. The live variants exist for structural completeness and are
 /// **disabled by default**: the engine refuses to route real orders unless an
 /// explicit opt-in flag is present.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Exchange {
     /// Simulated / paper venue backed by a local matching engine.

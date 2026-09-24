@@ -33,6 +33,11 @@ Features marked **[IMPLEMENTED]** are working and tested. Features marked **[PLA
 | Telemetry (tracing, Prometheus metrics, latency histograms) | **[IMPLEMENTED]** |
 | Web dashboard (React/Vite) | **[IMPLEMENTED]** |
 | Docker / docker-compose / Kubernetes manifests | **[IMPLEMENTED]** |
+| Event-sourced sequencer (`lq-sequencer`: WAL, snapshot, replay, state hash) | **[IMPLEMENTED]** |
+| Central limit order book (`lq-clob`) | **[PLANNED]** |
+| Perpetuals margin & liquidation (`lq-perps`) | **[PLANNED]** |
+| Signed order gateway (ed25519) | **[PLANNED]** |
+| Raft replication | **[PLANNED]** |
 | Live trading mode | **[PLANNED]** |
 | On-chain order execution through Raydium/Jupiter | **[PLANNED]** |
 
