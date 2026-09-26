@@ -1,0 +1,25 @@
+[package]
+name = "lq-clob"
+description = "Order-level central limit order book: price-time priority matching, TIF, STP, cancel/replace — pure state machine over the sequencer log."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+lq-sequencer = { path = "../sequencer" }
+lq-types = { path = "../types" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+rust_decimal = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+criterion = { workspace = true }
+rust_decimal_macros = { workspace = true }
+tempfile = "3"
+
+[[bench]]
+name = "clob_match"
+harness = false

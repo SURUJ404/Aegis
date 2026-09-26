@@ -72,6 +72,7 @@ fn bench_replay(c: &mut Criterion) {
                         price: Some(dec!(100)),
                         quantity: dec!(0.1),
                         time_in_force: TimeInForce::Gtc,
+                        ..Default::default()
                     }),
                 )
                 .unwrap();

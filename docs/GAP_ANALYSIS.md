@@ -1,6 +1,6 @@
 # Gap Analysis: Aegis → dYdX v4-Style Perpetuals Core
 
-**Status:** Phase 0 complete; Stage 1 implemented (`lq-sequencer`).  
+**Status:** Phase 0 complete; Stage 1 (`lq-sequencer`) and Stage 2 (`lq-clob`) implemented.  
 **Reference:** [dYdX v4-chain](https://github.com/dydxprotocol/v4-chain) — `protocol/x/clob`, `x/perpetuals`, `x/subaccounts`, `x/prices`, `x/liquidations`, `indexer/`, `v4-clients`.  
 **Date:** 2026-09-24
 
@@ -180,17 +180,17 @@ Legend: **P** = present (partial), **A** = absent, **R** = present but wrong sha
 | 2 | Write-ahead log + replay | ABCI txs / block store | **Done:** CRC-framed WAL, tail recovery | **P** | Stage 1 ✅ |
 | 3 | Snapshots + rebuild-from-empty-log | CometBFT state sync | **Done:** snapshot + WAL suffix; empty-log hash equality | **P** | Stage 1 ✅ |
 | 4 | Deterministic state hash | App hash | **Done:** SHA-256 canonical `StateHash` (Decimal normalized) | **P** | Stage 1 ✅ (+7 wire across replicas) |
-| 5 | Event-sourced money state | Msg-based state machine | **Done for Stage 1:** `LedgerState` + `StateMachine`; engine still uses `EngineState` on live path until Stage 2+ cutover | **P** | Stage 1–3 |
+| 5 | Event-sourced money state | Msg-based state machine | **Done:** `LedgerState` (Stage 1) + `ClobState` (Stage 2); engine still uses `EngineState` on live path until Stage 5+ cutover | **P** | Stage 1–3 |
 | **CLOB** | | | | | |
-| 6 | Order-level book, price-time priority | `x/clob` memclob | Aggregated `BTreeMap<u64,u64>` tick→qty; **no order IDs, no FIFO queue** | **R** | Stage 2 `lq-clob` |
-| 7 | Continuous matching of client orders | CLOB match | Paper venue fills only when **external** book crosses; no counterparty matching | **A** | Stage 2 |
-| 8 | Order types: Limit, Market, PostOnly, IOC, FOK | CLOB order types | Enums exist (`OrderType`, `TimeInForce`); paper path does not fully enforce TIF/PostOnly semantics | **P** | Stage 2 |
-| 9 | Reduce-only orders | CLOB reduce-only | Absent | **A** | Stage 2–3 |
-| 10 | Cancel / replace (atomic) | CLOB cancel/replace | Cancel-all + re-place in strategy; no replace primitive | **P** | Stage 2 |
-| 11 | Self-trade prevention | STP policies | Absent | **A** | Stage 2 |
-| 12 | Short-term orders (memory, expire by seq) | ST order window | Only `OrderStatus::Expired` concept; no seq-based expiry | **A** | Stage 2 |
-| 13 | Stateful / conditional long-term orders | Conditional orders | Absent | **A** | Stage 2 (design+stub OK early) |
-| 14 | Price-time priority correctness tests / proptest | protocol tests | Unit tests on aggregate book only | **P** | Stage 2 |
+| 6 | Order-level book, price-time priority | `x/clob` memclob | **Done:** `lq-clob` `Book` = `BTreeMap<Price, VecDeque<Uuid>>` per side; FIFO within level | **P** | Stage 2 ✅ |
+| 7 | Continuous matching of client orders | CLOB match | **Done:** matching inside `apply`; maker-price execution; outputs = fills | **P** | Stage 2 ✅ |
+| 8 | Order types: Limit, Market, PostOnly, IOC, FOK | CLOB order types | **Done:** `exec_policy` enforces all TIF branches; market never rests | **P** | Stage 2 ✅ |
+| 9 | Reduce-only orders | CLOB reduce-only | Absent (needs positions from Stage 3) | **A** | Stage 3 |
+| 10 | Cancel / replace (atomic) | CLOB cancel/replace | **Done:** `ReplaceOrder` entry, no-mutation on failure | **P** | Stage 2 ✅ |
+| 11 | Self-trade prevention | STP policies | **Done:** none / cancel-resting / cancel-taker / cancel-both via `owner` | **P** | Stage 2 ✅ (subaccount ids in Stage 3) |
+| 12 | Short-term orders (memory, expire by seq) | ST order window | **Done:** `expiration_ms` vs entry `ts_ms`, global sweep; stateful = `None` | **P** | Stage 2 ✅ |
+| 13 | Stateful / conditional long-term orders | Conditional orders | Stateful = no expiry (done); conditional orders still absent | **P** | Stage 2 (stateful ✅; conditional later) |
+| 14 | Price-time priority correctness tests / proptest | protocol tests | **Done:** 28 behavior tests + proptest invariants (consistency, conservation, replay hash) | **P** | Stage 2 ✅ |
 | **Perps / margin** | | | | | |
 | 15 | Subaccounts (USDC collateral, positions) | `x/subaccounts` | `Position` + `Inventory` per venue/symbol; **no subaccount ID, no collateral balance** | **R** | Stage 3 `lq-perps` |
 | 16 | Initial / maintenance margin | `x/perpetuals` | `lq-risk` max qty/notional/position limits only | **A** | Stage 3 |
@@ -301,7 +301,7 @@ Each stage = one PR-sized change: design note + code + invariant tests + docs + 
 | Stage | Deliverable | Primary new crates / changes | Key tests |
 |---|---|---|---|
 | **1** | Sequencer + event-sourced state | **✅ Done** — `lq-sequencer` (WAL, snapshot, replay, `StateHash`, `LedgerState`); `LogEntry` with global+market seq; logical `ts_ms` | Replay empty→hash equality; hash stability; decoder fuzz; proptest seq monotonic; backtest cross-check |
-| **2** | CLOB | `lq-clob` generalized from paper matching: order-level book, TIF, STP, cancel/replace, ST vs stateful | proptest price-time priority, conservation of qty; no-RNG match; p50/p99 match bench |
+| **2** | CLOB | **✅ Done** — `lq-clob`: order-level book, TIF, STP, cancel/replace, ST vs stateful; `apply` returns `ApplyOutput`s | proptest price-time priority, conservation of qty; no-RNG match; p50/p99 match bench |
 | **3** | Perps + margin | `lq-perps`: subaccounts, IM/MM, mark/index hooks, funding skeleton, liquidation @ bankruptcy, insurance, ADL stub; risk → margin pre-check | proptest margin invariants; Σpositions=0; collateral conserved; liquidation bench |
 | **4** | Oracle | `lq-oracle`: multi-source median, outlier reject, staleness → log entries; circuit breakers | prop: median/outlier; staleness halt; no live reads in SM |
 | **5** | Gateway | Signed orders (ed25519), rate limits, validation, WS ingress → sequencer | Signature accept/reject fuzz; rate limit props; parser fuzz |
@@ -324,6 +324,8 @@ Each stage = one PR-sized change: design note + code + invariant tests + docs + 
 | `PositionManager` | Absorbed/extended by `lq-perps` (subaccount-centric) |
 | `RiskEngine` | Limits remain as operator guardrails; margin checks move to `lq-perps`; kill switch → circuit breakers in log |
 | `lq-sequencer` | **Stage 1 done:** WAL/snapshot/replay/state hash for money-path commands |
+| `lq-clob` | **Stage 2 done:** order-level matching as `StateMachine` over the sequencer log |
+| `lq-orderbook` | Feed-level book stays market-data only (analytics/oracle inputs); not the client book |
 | `lq-backtest` | Stage 1 cross-checked via shared determinism; later re-based on sequencer log |
 | `lq-api` control routes | Remain for ops; order ingress moves to Gateway (Stage 5) |
 | `lq-persistence` Postgres | Audit/debug only; indexer owns client-facing history (Stage 6) |
@@ -361,7 +363,7 @@ Phase 0 complete. **Plan approved with §7.1 decisions locked.**
 - Gap table (§3) and stage plan (§5): approved
 - Open questions (§7): resolved per §7.1
 
-**Stage 1: complete** — see `docs/stages/STAGE_1_SEQUENCER.md` for the design
-note, tests, and residual risks.
+**Stage 1: complete** — see `docs/stages/STAGE_1_SEQUENCER.md`.  
+**Stage 2: complete** — see `docs/stages/STAGE_2_CLOB.md`.
 
-**Next:** Stage 2 (`lq-clob`) — start only on explicit go-ahead.
+**Next:** Stage 3 (`lq-perps`) — start only on explicit go-ahead.

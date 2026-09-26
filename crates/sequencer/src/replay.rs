@@ -31,7 +31,7 @@ pub fn rebuild_empty_log<S: StateMachine>(
 ) -> Result<(S, crate::hash::StateHash), ReplayError> {
     let entries = Wal::read_all(wal_path)?;
     for entry in &entries {
-        sm.apply(entry)?;
+        let _ = sm.apply(entry)?;
     }
     let hash = sm.state_hash();
     Ok((sm, hash))
@@ -73,7 +73,7 @@ pub fn rebuild<S: StateMachine>(
         if entry.global_seq <= base_seq {
             continue;
         }
-        sm.apply(entry)?;
+        let _ = sm.apply(entry)?;
     }
 
     let hash = sm.state_hash();

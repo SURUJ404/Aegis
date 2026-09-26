@@ -60,6 +60,7 @@ mod tests {
                 price: Some(dec!(100.5)),
                 quantity: dec!(0.25),
                 time_in_force: TimeInForce::Gtc,
+                ..Default::default()
             }),
         }
     }

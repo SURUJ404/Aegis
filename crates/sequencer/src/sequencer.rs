@@ -91,7 +91,8 @@ impl<S: StateMachine> Sequencer<S> {
         }
         if let Some((seq, path)) = best {
             let snap = Snapshot::load(&path)?;
-            let decoded = S::decode_state(&snap.state_bytes).map_err(SequencerError::StateDecode)?;
+            let decoded =
+                S::decode_state(&snap.state_bytes).map_err(SequencerError::StateDecode)?;
             let actual = decoded.state_hash();
             if !snap.hash_matches(actual) {
                 return Err(SequencerError::HashMismatch {
@@ -116,7 +117,7 @@ impl<S: StateMachine> Sequencer<S> {
             if entry.global_seq <= snap_base_seq {
                 continue;
             }
-            sm.apply(entry)?;
+            let _ = sm.apply(entry)?;
             applied += 1;
         }
 
@@ -157,13 +158,26 @@ impl<S: StateMachine> Sequencer<S> {
     }
 
     /// Assign sequences, append to WAL, apply to state. Logical time is
-    /// `ts_ms` (or `cfg.default_ts_ms` when `None`).
+    /// `ts_ms` (or `cfg.default_ts_ms` when `None`). Outputs (fills etc.)
+    /// are discarded; use [`Sequencer::append_with_outputs`] to observe them.
     pub fn append(
         &mut self,
         market: MarketId,
         ts_ms: Option<u64>,
         payload: EntryPayload,
     ) -> Result<LogEntry, SequencerError> {
+        self.append_with_outputs(market, ts_ms, payload)
+            .map(|(entry, _)| entry)
+    }
+
+    /// Like [`Sequencer::append`] but also returns the state machine outputs
+    /// (fills, lifecycle events) produced by applying the entry.
+    pub fn append_with_outputs(
+        &mut self,
+        market: MarketId,
+        ts_ms: Option<u64>,
+        payload: EntryPayload,
+    ) -> Result<(LogEntry, Vec<crate::state::ApplyOutput>), SequencerError> {
         let global_seq = self.sm.last_global_seq() + 1;
         let market_seq = self.sm.market_seq(&market) + 1;
         let entry = LogEntry {
@@ -176,19 +190,22 @@ impl<S: StateMachine> Sequencer<S> {
 
         // Durability first: WAL, then state.
         self.wal.append(&entry)?;
-        self.sm.apply(&entry)?;
+        let outputs = self.sm.apply(&entry)?;
         self.applied_total += 1;
         self.entries_since_snapshot += 1;
 
         if self.cfg.snapshot_every > 0 && self.entries_since_snapshot >= self.cfg.snapshot_every {
             self.write_snapshot()?;
         }
-        Ok(entry)
+        Ok((entry, outputs))
     }
 
     /// Force a snapshot of the current state.
     pub fn write_snapshot(&mut self) -> Result<PathBuf, SequencerError> {
-        let state_bytes = self.sm.encode_state().map_err(SequencerError::StateEncode)?;
+        let state_bytes = self
+            .sm
+            .encode_state()
+            .map_err(SequencerError::StateEncode)?;
         let hash = self.sm.state_hash();
         let market_seqs = self.sm.market_seqs();
         let snap = Snapshot {

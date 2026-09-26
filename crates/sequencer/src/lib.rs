@@ -25,10 +25,11 @@ pub mod wal;
 pub use codec::{decode_entry, encode_entry, CodecError};
 pub use entry::{
     EntryPayload, FillCmd, FillLiquidity, LogEntry, MarketId, MarketTickCmd, PlaceOrderCmd,
+    StpPolicy,
 };
 pub use hash::{write_decimal, StateHash};
 pub use replay::{rebuild, rebuild_empty_log, ReplayError};
 pub use sequencer::{Sequencer, SequencerConfig, SequencerError};
 pub use snapshot::{Snapshot, SnapshotError};
-pub use state::{ApplyError, LedgerOrder, LedgerState, StateMachine};
+pub use state::{ApplyError, ApplyOutput, CancelReason, LedgerOrder, LedgerState, StateMachine};
 pub use wal::{Wal, WalError};

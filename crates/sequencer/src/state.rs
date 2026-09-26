@@ -14,7 +14,9 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::entry::{EntryPayload, LogEntry, MarketId};
-use crate::hash::{finish, new_hasher, write_decimal, write_str, write_u64, StateHash, StateHasher};
+use crate::hash::{
+    finish, new_hasher, write_decimal, write_str, write_u64, StateHash, StateHasher,
+};
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum ApplyError {
@@ -38,9 +40,76 @@ pub enum ApplyError {
     OrderTerminal(Uuid),
 }
 
+/// Why an order left the book without being filled.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CancelReason {
+    /// Explicit cancel command.
+    User,
+    /// Cancel/replace superseded the order.
+    Replace,
+    /// Self-trade prevention cancelled the resting order.
+    SelfTradeResting,
+    /// Self-trade prevention cancelled the taker remainder.
+    SelfTradeTaker,
+    /// Self-trade prevention cancelled both sides.
+    SelfTradeBoth,
+    /// IOC/FOK/market remainder could not rest.
+    IocRemainder,
+    /// Order was rejected by matching policy (PostOnly cross, FOK, STP).
+    Rejected,
+}
+
+/// Side effect produced by applying one log entry. Emitted by the state
+/// machine for the indexer/gateway (Stage 6); never written back to the WAL.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ApplyOutput {
+    /// A trade between `taker_order_id` and `maker_order_id` at `price`.
+    Fill {
+        taker_order_id: Uuid,
+        maker_order_id: Uuid,
+        market: MarketId,
+        price: Price,
+        quantity: Qty,
+        taker_fee: Decimal,
+        maker_fee: Decimal,
+        ts_ms: u64,
+    },
+    /// Order accepted (resting or filled).
+    Placed {
+        order_id: Uuid,
+        market: MarketId,
+        resting: bool,
+        ts_ms: u64,
+    },
+    /// Order cancelled (see [`CancelReason`]).
+    Cancelled {
+        order_id: Uuid,
+        market: MarketId,
+        reason: CancelReason,
+        ts_ms: u64,
+    },
+    /// Order rejected without resting (PostOnly cross, FOK, STP taker, …).
+    Rejected {
+        order_id: Uuid,
+        market: MarketId,
+        reason: &'static str,
+        ts_ms: u64,
+    },
+    /// Short-term order expired against the entry's logical time.
+    Expired {
+        order_id: Uuid,
+        market: MarketId,
+        ts_ms: u64,
+    },
+}
+
 /// Deterministic event-sourced state machine.
 pub trait StateMachine {
-    fn apply(&mut self, entry: &LogEntry) -> Result<(), ApplyError>;
+    /// Apply one entry. Returns outputs (fills, lifecycle events) for the
+    /// caller (indexer, tests). Same log ⇒ same state hash ⇒ same outputs.
+    fn apply(&mut self, entry: &LogEntry) -> Result<Vec<ApplyOutput>, ApplyError>;
 
     /// Canonical hash of all money-relevant state (sequences included).
     fn state_hash(&self) -> StateHash;
@@ -85,17 +154,23 @@ impl LedgerOrder {
         write_str(h, &self.order_id.to_string());
         write_str(h, self.market.venue.as_str());
         write_str(h, self.market.symbol.as_str());
-        write_str(h, match self.side {
-            Side::Bid => "bid",
-            Side::Ask => "ask",
-        });
-        write_str(h, match self.order_type {
-            OrderType::Limit => "limit",
-            OrderType::Market => "market",
-            OrderType::PostOnly => "post_only",
-            OrderType::ImmediateOrCancel => "ioc",
-            OrderType::FillOrKill => "fok",
-        });
+        write_str(
+            h,
+            match self.side {
+                Side::Bid => "bid",
+                Side::Ask => "ask",
+            },
+        );
+        write_str(
+            h,
+            match self.order_type {
+                OrderType::Limit => "limit",
+                OrderType::Market => "market",
+                OrderType::PostOnly => "post_only",
+                OrderType::ImmediateOrCancel => "ioc",
+                OrderType::FillOrKill => "fok",
+            },
+        );
         match &self.price {
             Some(p) => {
                 write_str(h, "p:");
@@ -194,7 +269,11 @@ impl LedgerState {
         Ok(())
     }
 
-    fn apply_place(&mut self, entry: &LogEntry, cmd: &crate::entry::PlaceOrderCmd) -> Result<(), ApplyError> {
+    fn apply_place(
+        &mut self,
+        entry: &LogEntry,
+        cmd: &crate::entry::PlaceOrderCmd,
+    ) -> Result<(), ApplyError> {
         if cmd.quantity <= Decimal::ZERO {
             return Err(ApplyError::InvalidQuantity);
         }
@@ -240,7 +319,21 @@ impl LedgerState {
         Ok(())
     }
 
-    fn apply_fill(&mut self, entry: &LogEntry, fill: &crate::entry::FillCmd) -> Result<(), ApplyError> {
+    fn apply_replace(
+        &mut self,
+        entry: &LogEntry,
+        old_order_id: Uuid,
+        new: &crate::entry::PlaceOrderCmd,
+    ) -> Result<(), ApplyError> {
+        self.apply_cancel(entry, old_order_id)?;
+        self.apply_place(entry, new)
+    }
+
+    fn apply_fill(
+        &mut self,
+        entry: &LogEntry,
+        fill: &crate::entry::FillCmd,
+    ) -> Result<(), ApplyError> {
         if fill.quantity <= Decimal::ZERO {
             return Err(ApplyError::InvalidQuantity);
         }
@@ -269,7 +362,10 @@ impl LedgerState {
             Side::Bid => fill.quantity,
             Side::Ask => -fill.quantity,
         };
-        *self.net_positions.entry(market.clone()).or_insert(Decimal::ZERO) += signed;
+        *self
+            .net_positions
+            .entry(market.clone())
+            .or_insert(Decimal::ZERO) += signed;
         *self.realized_fees.entry(market).or_insert(Decimal::ZERO) += fill.fee;
         self.stats_filled += 1;
         Ok(())
@@ -281,13 +377,16 @@ impl LedgerState {
 }
 
 impl StateMachine for LedgerState {
-    fn apply(&mut self, entry: &LogEntry) -> Result<(), ApplyError> {
+    fn apply(&mut self, entry: &LogEntry) -> Result<Vec<ApplyOutput>, ApplyError> {
         self.expect_global(entry)?;
         self.expect_market(entry)?;
 
         match &entry.payload {
             EntryPayload::PlaceOrder(cmd) => self.apply_place(entry, cmd)?,
             EntryPayload::CancelOrder { order_id } => self.apply_cancel(entry, *order_id)?,
+            EntryPayload::ReplaceOrder { old_order_id, new } => {
+                self.apply_replace(entry, *old_order_id, new)?
+            }
             EntryPayload::Fill(fill) => self.apply_fill(entry, fill)?,
             EntryPayload::MarketTick(tick) => self.apply_tick(&entry.market, tick),
         }
@@ -295,7 +394,9 @@ impl StateMachine for LedgerState {
         self.last_global_seq = entry.global_seq;
         self.market_seqs
             .insert(entry.market.clone(), entry.market_seq);
-        Ok(())
+        // Stage 1 ledger consumes fills as inputs; matching outputs belong to
+        // the CLOB state machine (`lq-clob`).
+        Ok(Vec::new())
     }
 
     fn state_hash(&self) -> StateHash {
@@ -346,13 +447,20 @@ impl StateMachine for LedgerState {
     }
 
     fn market_seqs(&self) -> Vec<(MarketId, u64)> {
-        self.market_seqs.iter().map(|(k, v)| (k.clone(), *v)).collect()
+        self.market_seqs
+            .iter()
+            .map(|(k, v)| (k.clone(), *v))
+            .collect()
     }
 
     fn encode_state(&self) -> Result<Vec<u8>, String> {
         let wire = LedgerWire {
             last_global_seq: self.last_global_seq,
-            market_seqs: self.market_seqs.iter().map(|(k, v)| (k.clone(), *v)).collect(),
+            market_seqs: self
+                .market_seqs
+                .iter()
+                .map(|(k, v)| (k.clone(), *v))
+                .collect(),
             orders: self.orders.values().cloned().collect(),
             net_positions: self
                 .net_positions
@@ -437,6 +545,7 @@ mod tests {
                 price: Some(dec!(100)),
                 quantity: qty,
                 time_in_force: TimeInForce::Gtc,
+                ..Default::default()
             }),
         }
     }
@@ -456,9 +565,7 @@ mod tests {
     #[test]
     fn seq_gap_rejected() {
         let mut sm = LedgerState::new();
-        let err = sm
-            .apply(&place(2, 1, Uuid::nil(), dec!(1)))
-            .unwrap_err();
+        let err = sm.apply(&place(2, 1, Uuid::nil(), dec!(1))).unwrap_err();
         assert!(matches!(
             err,
             ApplyError::GlobalSeqGap {
@@ -488,6 +595,7 @@ mod tests {
                 price: Some(dec!(100)),
                 quantity: dec!(2),
                 time_in_force: TimeInForce::Gtc,
+                ..Default::default()
             }),
         })
         .unwrap();
@@ -521,6 +629,7 @@ mod tests {
                 price: Some(dec!(101)),
                 quantity: dec!(3),
                 time_in_force: TimeInForce::Gtc,
+                ..Default::default()
             }),
         })
         .unwrap();

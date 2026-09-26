@@ -31,6 +31,7 @@ cargo bench --workspace
 - `lq-strategy`: market-making decision cost
 - `lq-risk`: order validation
 - `lq-sequencer`: WAL append, full replay, state apply
+- `lq-clob`: rest 1000 orders, sweep 100 asks, single passive fill, state hash
 
 ## Conventions
 
@@ -72,6 +73,21 @@ The sequencer is the money-path log (Stage 1). Invariants that must hold:
 
 Tests covering these live in `crates/sequencer/tests/sequencer_integration.rs`
 (proptest + backtest cross-check).
+
+## Deterministic matching (`lq-clob`)
+
+The CLOB is a `StateMachine` over the same log. Invariants:
+
+- Matching is pure: price-time priority (best price → FIFO), maker-price
+  execution, no RNG, no wall clock (expiry uses entry `ts_ms` only).
+- Command-level failures (duplicate id, PostOnly cross, FOK unfilled, unknown
+  cancel, self-trade) are `Ok` outputs (`ApplyOutput::Rejected`), never `Err` —
+  only sequence gaps error, so the WAL always replays cleanly.
+- Same log ⇒ same `state_hash` **and** same `Vec<ApplyOutput>`.
+
+Tests: `crates/clob/tests/clob_behavior.rs` (28 cases) and
+`crates/clob/tests/clob_invariants.rs` (proptest: book/order consistency, qty
+conservation, replay hash equality).
 
 ## Pitfalls
 

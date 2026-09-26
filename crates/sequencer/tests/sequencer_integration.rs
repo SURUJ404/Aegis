@@ -18,11 +18,16 @@ fn place_payload(i: u64) -> EntryPayload {
     EntryPayload::PlaceOrder(PlaceOrderCmd {
         order_id: Uuid::from_u128(i as u128 + 1),
         client_order_id: format!("c-{i}"),
-        side: if i.is_multiple_of(2) { Side::Bid } else { Side::Ask },
+        side: if i.is_multiple_of(2) {
+            Side::Bid
+        } else {
+            Side::Ask
+        },
         order_type: OrderType::Limit,
         price: Some(dec!(100) + rust_decimal::Decimal::from(i % 7)),
         quantity: dec!(0.1),
         time_in_force: TimeInForce::Gtc,
+        ..Default::default()
     })
 }
 
@@ -182,7 +187,9 @@ fn decoder_never_panics_on_arbitrary_bytes() {
     // Lightweight fuzz: random-ish and structured garbage must Err, not panic.
     let mut seed = 0x1234_5678u64;
     let mut next = || {
-        seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        seed = seed
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         seed
     };
     for len in 0..128usize {
@@ -307,6 +314,7 @@ mod props {
                     price: Some(p),
                     quantity: q,
                     time_in_force: TimeInForce::Gtc,
+                    ..Default::default()
                 }),
             };
             let bytes = encode_entry(&e).unwrap();
@@ -423,16 +431,12 @@ mod backtest_cross {
                 // Market tick from each event's timestamped observation.
                 let last = match ev {
                     MarketEvent::Trade(t) => t.price,
-                    MarketEvent::Snapshot(s) => s
-                        .bids
-                        .first()
-                        .map(|l| l.price)
-                        .unwrap_or(Decimal::ONE),
-                    MarketEvent::Delta(d) => d
-                        .changes
-                        .first()
-                        .map(|c| c.price)
-                        .unwrap_or(Decimal::ONE),
+                    MarketEvent::Snapshot(s) => {
+                        s.bids.first().map(|l| l.price).unwrap_or(Decimal::ONE)
+                    }
+                    MarketEvent::Delta(d) => {
+                        d.changes.first().map(|c| c.price).unwrap_or(Decimal::ONE)
+                    }
                     _ => Decimal::ONE,
                 };
                 seq.append(

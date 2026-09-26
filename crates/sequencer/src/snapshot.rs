@@ -67,7 +67,9 @@ impl Snapshot {
 
 /// Candidate snapshot file names under a data directory (newest wins by
 /// embedded global_seq after listing).
-pub fn list_snapshot_files(dir: impl AsRef<Path>) -> Result<Vec<std::path::PathBuf>, SnapshotError> {
+pub fn list_snapshot_files(
+    dir: impl AsRef<Path>,
+) -> Result<Vec<std::path::PathBuf>, SnapshotError> {
     let dir = dir.as_ref();
     if !dir.exists() {
         return Ok(Vec::new());

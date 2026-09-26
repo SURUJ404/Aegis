@@ -37,17 +37,40 @@ pub struct LogEntry {
     pub payload: EntryPayload,
 }
 
-/// Command payloads that may enter the log (Stage 1 set).
+/// Command payloads that may enter the log (Stage 1–2 set).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum EntryPayload {
     PlaceOrder(PlaceOrderCmd),
-    CancelOrder { order_id: Uuid },
+    CancelOrder {
+        order_id: Uuid,
+    },
+    /// Atomic cancel/replace (Stage 2): cancel `old_order_id`, then place `new`.
+    ReplaceOrder {
+        old_order_id: Uuid,
+        new: Box<PlaceOrderCmd>,
+    },
     Fill(FillCmd),
     MarketTick(MarketTickCmd),
 }
 
-/// Client order placement command (unsigned in Stage 1; gateway signs in Stage 5).
+/// Self-trade prevention action when an incoming order would match a resting
+/// order with the same non-empty `owner`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StpPolicy {
+    /// Match normally (no self-trade prevention).
+    #[default]
+    None,
+    /// Cancel the resting (maker) order and let the taker continue past it.
+    CancelResting,
+    /// Abort the taker when it would hit a resting self order.
+    CancelTaker,
+    /// Cancel both the resting order and the remainder of the taker.
+    CancelBoth,
+}
+
+/// Client order placement command (unsigned until the gateway signs in Stage 5).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PlaceOrderCmd {
     pub order_id: Uuid,
@@ -57,6 +80,34 @@ pub struct PlaceOrderCmd {
     pub price: Option<Price>,
     pub quantity: Qty,
     pub time_in_force: TimeInForce,
+    /// Owner identity used for self-trade prevention. Empty = no owner
+    /// (STP never triggers against an empty owner).
+    #[serde(default)]
+    pub owner: String,
+    /// Self-trade prevention policy (default: none).
+    #[serde(default)]
+    pub stp: StpPolicy,
+    /// Short-term orders carry an absolute logical expiration (entry `ts_ms`
+    /// domain). `None` = stateful (persists until cancel/fill/explicit term).
+    #[serde(default)]
+    pub expiration_ms: Option<u64>,
+}
+
+impl Default for PlaceOrderCmd {
+    fn default() -> Self {
+        Self {
+            order_id: Uuid::nil(),
+            client_order_id: String::new(),
+            side: Side::Bid,
+            order_type: OrderType::Limit,
+            price: None,
+            quantity: Decimal::ONE,
+            time_in_force: TimeInForce::Gtc,
+            owner: String::new(),
+            stp: StpPolicy::None,
+            expiration_ms: None,
+        }
+    }
 }
 
 /// Execution result logged so position updates are event-sourced.
@@ -89,6 +140,7 @@ impl LogEntry {
         match self.payload {
             EntryPayload::PlaceOrder(_) => "place_order",
             EntryPayload::CancelOrder { .. } => "cancel_order",
+            EntryPayload::ReplaceOrder { .. } => "replace_order",
             EntryPayload::Fill(_) => "fill",
             EntryPayload::MarketTick(_) => "market_tick",
         }
