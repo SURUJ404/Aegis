@@ -37,7 +37,7 @@ pub struct LogEntry {
     pub payload: EntryPayload,
 }
 
-/// Command payloads that may enter the log (Stage 1–2 set).
+/// Command payloads that may enter the log (Stage 1–3 set).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum EntryPayload {
@@ -52,6 +52,27 @@ pub enum EntryPayload {
     },
     Fill(FillCmd),
     MarketTick(MarketTickCmd),
+    /// Stage 3: deposit (positive) or withdraw (negative) collateral to/from a
+    /// subaccount. The only boundary crossing of the collateral conservation
+    /// invariant (withdrawals must leave a non-negative balance).
+    Transfer {
+        subaccount: u64,
+        amount: Decimal,
+    },
+    /// Stage 3: liquidate an unhealthy subaccount's position in `entry.market`
+    /// at its bankruptcy price. Submitted by the liquidator daemon; executed
+    /// inside `apply` against the CLOB with the insurance fund as backstop.
+    Liquidate {
+        subaccount: u64,
+        /// Optional cap on the base quantity to close (defaults: full position).
+        max_qty: Option<Qty>,
+    },
+    /// Stage 3: settle periodic funding for `entry.market` at `rate`
+    /// (longs pay when `rate > 0`). The rate itself is produced by a daemon
+    /// outside the state machine (oracle-driven from Stage 4).
+    SettleFunding {
+        rate: Decimal,
+    },
 }
 
 /// Self-trade prevention action when an incoming order would match a resting
@@ -91,6 +112,14 @@ pub struct PlaceOrderCmd {
     /// domain). `None` = stateful (persists until cancel/fill/explicit term).
     #[serde(default)]
     pub expiration_ms: Option<u64>,
+    /// Stage 3: subaccount that owns this order's exposure. `None` = default
+    /// subaccount (0). Used for margin attribution and subaccount-scoped STP.
+    #[serde(default)]
+    pub subaccount: Option<u64>,
+    /// Stage 3: reduce-only orders may only decrease the owner's existing
+    /// position in the market (capped at place time, revalidated after fills).
+    #[serde(default)]
+    pub reduce_only: bool,
 }
 
 impl Default for PlaceOrderCmd {
@@ -106,6 +135,8 @@ impl Default for PlaceOrderCmd {
             owner: String::new(),
             stp: StpPolicy::None,
             expiration_ms: None,
+            subaccount: None,
+            reduce_only: false,
         }
     }
 }
@@ -143,6 +174,9 @@ impl LogEntry {
             EntryPayload::ReplaceOrder { .. } => "replace_order",
             EntryPayload::Fill(_) => "fill",
             EntryPayload::MarketTick(_) => "market_tick",
+            EntryPayload::Transfer { .. } => "transfer",
+            EntryPayload::Liquidate { .. } => "liquidate",
+            EntryPayload::SettleFunding { .. } => "settle_funding",
         }
     }
 }

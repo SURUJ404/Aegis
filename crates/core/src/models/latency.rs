@@ -29,6 +29,10 @@ pub enum LatencyStage {
     StrategyDecision,
     /// Risk validation.
     RiskValidation,
+    /// Pre-trade margin/risk check inside the state machine (`lq-perps`).
+    MarginCheck,
+    /// Liquidation execution (bankruptcy-price close).
+    Liquidation,
     /// Execution submission (client -> venue).
     ExecutionSubmit,
     /// Submission -> acknowledgement.
@@ -53,6 +57,8 @@ impl LatencyStage {
             Self::BookAnalytics => "book_analytics",
             Self::StrategyDecision => "strategy_decision",
             Self::RiskValidation => "risk_validation",
+            Self::MarginCheck => "margin_check",
+            Self::Liquidation => "liquidation",
             Self::ExecutionSubmit => "execution_submit",
             Self::ExecutionAck => "execution_ack",
             Self::ExecutionFill => "execution_fill",
@@ -128,6 +134,8 @@ mod tests {
     #[test]
     fn latency_stage_labels() {
         assert_eq!(LatencyStage::WebSocketReceive.as_label(), "websocket_receive");
+        assert_eq!(LatencyStage::MarginCheck.as_label(), "margin_check");
+        assert_eq!(LatencyStage::Liquidation.as_label(), "liquidation");
         assert_eq!(LatencyStage::EndToEnd.as_label(), "end_to_end");
     }
 

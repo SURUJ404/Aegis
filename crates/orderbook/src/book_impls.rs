@@ -37,7 +37,11 @@ pub trait OrderBookImpl: Send + Sync + Clone {
 
 #[derive(Debug, Clone)]
 pub struct BTreeMapBook {
+    // Market identity: written at construction for `Debug`/analytics; the
+    // matching path never reads it (the engine's map owns the identity).
+    #[allow(dead_code)]
     venue: Exchange,
+    #[allow(dead_code)]
     symbol: Symbol,
     spec: InstrumentSpec,
     bids: BTreeMap<PriceTick, u64>,
@@ -197,7 +201,10 @@ impl OrderBookImpl for BTreeMapBook {
 
 #[derive(Debug, Clone)]
 pub struct HashMapSortedVecBook {
+    // See `BTreeMapBook`: identity metadata only.
+    #[allow(dead_code)]
     venue: Exchange,
+    #[allow(dead_code)]
     symbol: Symbol,
     spec: InstrumentSpec,
     bids: HashMap<PriceTick, u64>,
@@ -412,9 +419,13 @@ impl OrderBookImpl for HashMapSortedVecBook {
 
 #[derive(Debug, Clone)]
 pub struct ArrayBackedBook {
+    // See `BTreeMapBook`: identity metadata only.
+    #[allow(dead_code)]
     venue: Exchange,
+    #[allow(dead_code)]
     symbol: Symbol,
     spec: InstrumentSpec,
+    #[allow(dead_code)]
     tick_size: PriceTick,
     base_price_tick: PriceTick,
     bid_array: Vec<u64>,

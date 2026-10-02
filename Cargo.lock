@@ -2948,6 +2948,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "lq-perps"
+version = "0.1.0"
+dependencies = [
+ "criterion",
+ "lq-clob",
+ "lq-sequencer",
+ "lq-types",
+ "proptest",
+ "rust_decimal",
+ "rust_decimal_macros",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.20",
+ "uuid",
+]
+
+[[package]]
 name = "lq-persistence"
 version = "0.1.0"
 dependencies = [

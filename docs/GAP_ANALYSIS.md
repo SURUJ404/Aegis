@@ -185,23 +185,23 @@ Legend: **P** = present (partial), **A** = absent, **R** = present but wrong sha
 | 6 | Order-level book, price-time priority | `x/clob` memclob | **Done:** `lq-clob` `Book` = `BTreeMap<Price, VecDeque<Uuid>>` per side; FIFO within level | **P** | Stage 2 ✅ |
 | 7 | Continuous matching of client orders | CLOB match | **Done:** matching inside `apply`; maker-price execution; outputs = fills | **P** | Stage 2 ✅ |
 | 8 | Order types: Limit, Market, PostOnly, IOC, FOK | CLOB order types | **Done:** `exec_policy` enforces all TIF branches; market never rests | **P** | Stage 2 ✅ |
-| 9 | Reduce-only orders | CLOB reduce-only | Absent (needs positions from Stage 3) | **A** | Stage 3 |
+| 9 | Reduce-only orders | CLOB reduce-only | **Done:** place-time cap (`PreTradeVerdict::Reduce`), auto-cancel (`CancelReason::ReduceOnly`) when position shrinks, end-of-apply revalidation | **A** | Stage 3 ✅ |
 | 10 | Cancel / replace (atomic) | CLOB cancel/replace | **Done:** `ReplaceOrder` entry, no-mutation on failure | **P** | Stage 2 ✅ |
-| 11 | Self-trade prevention | STP policies | **Done:** none / cancel-resting / cancel-taker / cancel-both via `owner` | **P** | Stage 2 ✅ (subaccount ids in Stage 3) |
+| 11 | Self-trade prevention | STP policies | **Done:** none / cancel-resting / cancel-taker / cancel-both via `owner` (normalized to `sub:<n>` per subaccount) | **P** | Stage 2 ✅ + Stage 3 ✅ |
 | 12 | Short-term orders (memory, expire by seq) | ST order window | **Done:** `expiration_ms` vs entry `ts_ms`, global sweep; stateful = `None` | **P** | Stage 2 ✅ |
 | 13 | Stateful / conditional long-term orders | Conditional orders | Stateful = no expiry (done); conditional orders still absent | **P** | Stage 2 (stateful ✅; conditional later) |
 | 14 | Price-time priority correctness tests / proptest | protocol tests | **Done:** 28 behavior tests + proptest invariants (consistency, conservation, replay hash) | **P** | Stage 2 ✅ |
 | **Perps / margin** | | | | | |
-| 15 | Subaccounts (USDC collateral, positions) | `x/subaccounts` | `Position` + `Inventory` per venue/symbol; **no subaccount ID, no collateral balance** | **R** | Stage 3 `lq-perps` |
-| 16 | Initial / maintenance margin | `x/perpetuals` | `lq-risk` max qty/notional/position limits only | **A** | Stage 3 |
-| 17 | Mark price / index price | oracle + mark | `MarketState.mid` from external book; no index/mark separation | **R** | Stage 3–4 |
-| 18 | Funding payments | funding daemon | Absent | **A** | Stage 3–4 |
-| 19 | Liquidation @ bankruptcy price | `x/liquidations` | Kill switch only; no liquidation engine | **A** | Stage 3 |
-| 20 | Insurance fund | `x/insurance` | Absent | **A** | Stage 3 |
-| 21 | ADL (auto-deleveraging) | ADL | Absent | **A** | Stage 3 (can stub) |
-| 22 | Atomic fill + margin transition | single state transition | Fill → `PositionManager` async via bus; margin not modeled | **R** | Stage 3 |
-| 23 | Risk limits absorbed as pre-trade margin checks | checkTx / place order | Separate `RiskEngine` with different semantics | **R** | Stage 3 |
-| 24 | Block invariants (collateral, Σpos, margin) | EndBlocker | None | **A** | Stage 3 |
+| 15 | Subaccounts (USDC collateral, positions) | `x/subaccounts` | **Done:** `lq-perps` `Subaccount { collateral, positions }`, `Transfer` deposits/withdrawals, insurance ledger reserved at `u64::MAX` | **A** | Stage 3 ✅ |
+| 16 | Initial / maintenance margin | `x/perpetuals` | **Done:** `MarketParams` IM/MM ratios; requirement = `|qty|·price·ratio` + open-order reservation; limits absorbed as pre-trade checks | **A** | Stage 3 ✅ |
+| 17 | Mark price / index price | oracle + mark | **Done:** mark = last trade/tick inside the SM (legacy behavior); **index price** not yet separate | **R** | Stage 3 ✅ (mark) / Stage 4 (index) |
+| 18 | Funding payments | funding daemon | **Done:** `SettleFunding` zero-sum payments + funding index (operator-triggered; interval daemon in Stage 4) | **A** | Stage 3 ✅ |
+| 19 | Liquidation @ bankruptcy price | `x/liquidations` | **Done:** limit price `mark + (fee − equity)/qty`, synthetic IOC vs book, insurance residual, cascade breaker | **A** | Stage 3 ✅ |
+| 20 | Insurance fund | `x/insurance` | **Done:** fees credit the insurance ledger; residual closes settle against it at the limit price | **A** | Stage 3 ✅ |
+| 21 | ADL (auto-deleveraging) | ADL | **Done (full, not stub):** while insurance equity < 0, close largest opposite position at the insurance-neutral price | **A** | Stage 3 ✅ |
+| 22 | Atomic fill + margin transition | single state transition | **Done:** `PerpsState` composes `ClobState`; pre-trade check → match → cash/margin in one `apply` | **A** | Stage 3 ✅ |
+| 23 | Risk limits absorbed as pre-trade margin checks | checkTx / place order | **Done:** `pre_trade_check` = validation + `PerpsConfig` limits + margin, verdicts Allow/Reduce/Reject; `RiskEngine` remains only on the legacy engine path | **A** | Stage 3 ✅ |
+| 24 | Block invariants (collateral, Σpos, margin) | EndBlocker | **Done:** `check_invariants` — collateral conserved, `Σ positions = 0`, pending = recomputed below-maintenance set — asserted after every apply in tests | **A** | Stage 3 ✅ |
 | **Oracle** | | | | | |
 | 25 | Multi-venue aggregation, median | `x/prices` | Per-venue books; cross-venue analyzer for arb only | **A** | Stage 4 `lq-oracle` |
 | 26 | Outlier rejection | price feed slashing | Absent | **A** | Stage 4 |
@@ -234,11 +234,11 @@ Legend: **P** = present (partial), **A** = absent, **R** = present but wrong sha
 | 48 | No RNG in SM | deterministic | **Done in `LedgerState`/sequencer:** no RNG. Paper venue RNG remains simulation-only | **P** | Stage 1 ✅ |
 | 49 | Replica hash comparison | app hash | Hash primitive ready; cross-node compare is Stage 7 | **A** | Stage 1 primitive + Stage 7 |
 | **Testing** | | | | | |
-| 50 | proptest matching + margin invariants | property tests | **Stage 1:** proptest seq monotonicity + codec roundtrip; matching props in Stage 2 | **P** | each stage |
+| 50 | proptest matching + margin invariants | property tests | **Stage 1:** proptest seq monotonicity + codec roundtrip; **Stage 2:** book/order consistency; **Stage 3:** collateral conservation, Σpos=0, flag freshness, replay determinism on seeded logs | **P** | each stage ✅ (1–3) |
 | 51 | Fuzz order parser + log decoder | fuzzing | **Stage 1:** proptest + structured garbage on `decode_entry` (no panic) | **P** | Stages 1 ✅, 5 |
 | 52 | Replay: empty log → same hash | state sync | **Done:** `rebuild_empty_log` / snapshot rebuild vs live hash; backtest cross-check | **P** | Stage 1 ✅ |
 | 53 | Chaos: kill leader, partition, corrupt WAL | e2e | **Partial:** corrupt WAL tail recovery tested; network chaos in Stage 7 | **P** | Stage 7 |
-| 54 | Criterion p50/p99 match + liquidation budgets | — | **Stage 1:** sequencer append/replay/apply benches; match/liquidation in Stage 2–3 | **P** | Stages 2–3 |
+| 54 | Criterion p50/p99 match + liquidation budgets | — | **Stage 1:** sequencer append/replay/apply benches; **Stage 2:** match benches; **Stage 3:** `apply_place_with_margin_check` ~2.1 µs, `liquidate_underwater_position` ~648 ns, `state_hash_2000_subaccounts` ~253 µs | **P** | Stages 2–3 ✅ |
 | **Observability** | | | | | |
 | 55 | Per-stage latency histograms | — | `lq_latency_ns{stage}` exists | **P** | extend stages |
 | 56 | Indexer sequence-lag gauges | — | Topic drop counters only | **A** | Stage 6 |
@@ -266,7 +266,7 @@ Today the loop applies events to mutable state with async side effects (venue `p
 
 ### 4.3 Risk limits ≠ margin system
 
-`RiskEngine` enforces notional/qty/rate/kill-switch. dYdX needs **per-subaccount collateral math**: free collateral, IM/MM requirements, liquidation threshold, bankruptcy price. Stage 3 absorbs risk *as* pre-trade checks derived from `lq-perps` margin, not as a parallel limit list.
+`RiskEngine` enforces notional/qty/rate/kill-switch. dYdX needs **per-subaccount collateral math**: free collateral, IM/MM requirements, liquidation threshold, bankruptcy price. **Closed in Stage 3:** `lq-perps`'s `pre_trade_check` enforces the limits *as* margin-derived pre-trade verdicts (Allow/Reduce/Reject) inside `apply` — the parallel `RiskEngine` limit list survives only on the legacy in-process engine path.
 
 ### 4.4 In-process strategy ≠ external client
 
@@ -302,7 +302,7 @@ Each stage = one PR-sized change: design note + code + invariant tests + docs + 
 |---|---|---|---|
 | **1** | Sequencer + event-sourced state | **✅ Done** — `lq-sequencer` (WAL, snapshot, replay, `StateHash`, `LedgerState`); `LogEntry` with global+market seq; logical `ts_ms` | Replay empty→hash equality; hash stability; decoder fuzz; proptest seq monotonic; backtest cross-check |
 | **2** | CLOB | **✅ Done** — `lq-clob`: order-level book, TIF, STP, cancel/replace, ST vs stateful; `apply` returns `ApplyOutput`s | proptest price-time priority, conservation of qty; no-RNG match; p50/p99 match bench |
-| **3** | Perps + margin | `lq-perps`: subaccounts, IM/MM, mark/index hooks, funding skeleton, liquidation @ bankruptcy, insurance, ADL stub; risk → margin pre-check | proptest margin invariants; Σpositions=0; collateral conserved; liquidation bench |
+| **3** | Perps + margin | **✅ Done** — `lq-perps`: subaccounts, IM/MM, pre-trade checks (limits absorbed from `lq-risk`), liquidation @ bankruptcy price, insurance, ADL, funding, block invariants; `Transfer`/`Liquidate`/`SettleFunding` entries | proptest collateral conservation + Σpositions=0 + replay determinism; 23 behavior tests; liquidation bench |
 | **4** | Oracle | `lq-oracle`: multi-source median, outlier reject, staleness → log entries; circuit breakers | prop: median/outlier; staleness halt; no live reads in SM |
 | **5** | Gateway | Signed orders (ed25519), rate limits, validation, WS ingress → sequencer | Signature accept/reject fuzz; rate limit props; parser fuzz |
 | **6** | Indexer + stream | Emit fill/order/position/funding → Kafka; `lq-indexer` → Postgres + REST + Redis WS | Lag gauges; crash-restart from offset; API contract tests |
@@ -321,10 +321,11 @@ Each stage = one PR-sized change: design note + code + invariant tests + docs + 
 | `BookStore` / feed `OrderBook` | Keep as external book for analytics/oracle inputs |
 | `PaperExchange` matching skeleton | Seed for `lq-clob` (strip RNG, add order-level priority) |
 | `OrderStateMachine` | Keep; align statuses with CLOB lifecycle |
-| `PositionManager` | Absorbed/extended by `lq-perps` (subaccount-centric) |
-| `RiskEngine` | Limits remain as operator guardrails; margin checks move to `lq-perps`; kill switch → circuit breakers in log |
+| `PositionManager` | **Superseded by `lq-perps`** (subaccount-centric positions in the state machine) |
+| `RiskEngine` | **Stage 3:** money-path limits moved into `lq-perps` pre-trade checks; legacy `RiskEngine` remains only for the old engine path until Stage 8 |
 | `lq-sequencer` | **Stage 1 done:** WAL/snapshot/replay/state hash for money-path commands |
 | `lq-clob` | **Stage 2 done:** order-level matching as `StateMachine` over the sequencer log |
+| `lq-perps` | **Stage 3 done:** subaccounts, margin, liquidation, insurance, ADL, funding composed over `lq-clob` |
 | `lq-orderbook` | Feed-level book stays market-data only (analytics/oracle inputs); not the client book |
 | `lq-backtest` | Stage 1 cross-checked via shared determinism; later re-based on sequencer log |
 | `lq-api` control routes | Remain for ops; order ingress moves to Gateway (Stage 5) |
@@ -350,7 +351,7 @@ Each stage = one PR-sized change: design note + code + invariant tests + docs + 
 1. **Kafka in Stage 6:** Redpanda single broker in docker-compose (vs external cluster) — default plan: one broker in compose.
 2. **openraft maturity / version:** pin at Stage 7 design time.
 3. **`Mode::Live`:** remains refused through Stage 8; paper/settlement-only.
-4. **Funding interval & insurance parameters:** concrete config defaults in Stage 3 design note.
+4. **Funding interval & insurance parameters:** **resolved** — defaults documented in `docs/stages/STAGE_3_PERPS.md` (`MarketParams` 10 % IM / 5 % MM, `liquidation_window_ms = 60_000`, fee/insurance behavior); interval scheduling itself moves to the Stage 4 funding daemon.
 5. **Existing `deterministic_across_runs`:** re-expressed as sequencer replay tests; old backtest API may break — acceptable.
 6. **Decimal hashing:** state hash must use a canonical Decimal serialization (normalized scale/representation) so equal values always hash equal across replicas.
 
@@ -363,7 +364,10 @@ Phase 0 complete. **Plan approved with §7.1 decisions locked.**
 - Gap table (§3) and stage plan (§5): approved
 - Open questions (§7): resolved per §7.1
 
-**Stage 1: complete** — see `docs/stages/STAGE_1_SEQUENCER.md`.  
+**Stage 1: complete** — see `docs/stages/STAGE_1_SEQUENCER.md`.
+
 **Stage 2: complete** — see `docs/stages/STAGE_2_CLOB.md`.
 
-**Next:** Stage 3 (`lq-perps`) — start only on explicit go-ahead.
+**Stage 3: complete** — see `docs/stages/STAGE_3_PERPS.md`.
+
+**Next:** Stage 4 (`lq-oracle`) — start only on explicit go-ahead.

@@ -89,6 +89,31 @@ Tests: `crates/clob/tests/clob_behavior.rs` (28 cases) and
 `crates/clob/tests/clob_invariants.rs` (proptest: book/order consistency, qty
 conservation, replay hash equality).
 
+## Deterministic margin & liquidation (`lq-perps`)
+
+`PerpsState` embeds `ClobState` and is driven by the same sequencer.
+Invariants:
+
+- Fill + margin transition is one `apply`: cash moves between subaccounts in
+  the same step that moves positions (cash-basis equity
+  `collateral + Σ qty·price`).
+- **Collateral is conserved**: `Σ collateral` over all ledgers (insurance
+  included) equals deposits − withdrawals; fees, funding, liquidation and ADL
+  are internal transfers. Machine-computed prices/amounts are quantized to
+  `PRICE_SCALE` (9 dp) first — unquantized 28-digit division results break
+  conservation across balances of different magnitudes (found by proptest).
+- **`Σ positions = 0` per market**, insurance ledger included.
+- Every below-maintenance subaccount holding a position is in the pending
+  liquidation set (`check_invariants` compares against a fresh recomputation).
+- Command failures are `Ok` outputs (`ApplyOutput::Rejected`), never `Err` —
+  only sequence gaps error (same contract as the CLOB).
+- One CLOB step (`apply`/`apply_noop`/`force_cancel`) per entry keeps the
+  perps and CLOB sequence counters in lockstep.
+
+Tests: `crates/perps/tests/perps_behavior.rs` (23 cases, invariants asserted
+after every entry) and `crates/perps/tests/perps_invariants.rs` (proptest:
+conservation, zero-sum, flag freshness, replay determinism on seeded logs).
+
 ## Pitfalls
 
 - **`EventBus::new()` spawns broker tasks** and must run inside a Tokio

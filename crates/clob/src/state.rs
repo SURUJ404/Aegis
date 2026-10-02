@@ -691,6 +691,63 @@ impl Default for ClobState {
     }
 }
 
+impl ClobState {
+    /// Apply only the structural shell of an entry: sequence checks, the
+    /// expiry sweep and the sequence advance — **without** dispatching the
+    /// payload. Used by `lq-perps` when a place/replace is rejected by the
+    /// pre-trade margin check: the order must never reach the book, but the
+    /// log entry still has to be consumed so replay stays gap-free.
+    pub fn apply_noop(&mut self, entry: &LogEntry) -> Result<Vec<ApplyOutput>, ApplyError> {
+        self.expect_global(entry)?;
+        self.expect_market(entry)?;
+
+        let mut out = Vec::new();
+        self.sweep_expired(entry.ts_ms, &mut out);
+
+        self.last_global_seq = entry.global_seq;
+        self.market_seqs
+            .insert(entry.market.clone(), entry.market_seq);
+        Ok(out)
+    }
+
+    /// Cancel an order outside of a client command (reduce-only violations
+    /// driven by the margin state machine). No-op if the order is unknown or
+    /// already terminal; returns `true` when the book was mutated.
+    pub fn force_cancel(
+        &mut self,
+        order_id: Uuid,
+        reason: CancelReason,
+        ts_ms: u64,
+        out: &mut Vec<ApplyOutput>,
+    ) -> bool {
+        let Some(order) = self.orders.get(&order_id) else {
+            return false;
+        };
+        if order.status.is_terminal() {
+            return false;
+        }
+        let market = order.market.clone();
+        let side = order.side;
+        if let Some(price) = order.book_price {
+            if let Some(book) = self.books.get_mut(&market) {
+                book.remove(side, price, order_id);
+            }
+        }
+        let o = self.orders.get_mut(&order_id).expect("checked above");
+        o.status = OrderStatus::Cancelled;
+        o.book_price = None;
+        o.updated_ts_ms = ts_ms;
+        self.stats.cancelled += 1;
+        out.push(ApplyOutput::Cancelled {
+            order_id,
+            market,
+            reason,
+            ts_ms,
+        });
+        true
+    }
+}
+
 impl StateMachine for ClobState {
     fn apply(&mut self, entry: &LogEntry) -> Result<Vec<ApplyOutput>, ApplyError> {
         self.expect_global(entry)?;
@@ -711,6 +768,11 @@ impl StateMachine for ClobState {
             EntryPayload::MarketTick(tick) => {
                 self.apply_tick(&entry.market, tick);
             }
+            // Stage 3 margin entries belong to `lq-perps`; the CLOB consumes
+            // their sequence (advance below) but mutates nothing.
+            EntryPayload::Transfer { .. }
+            | EntryPayload::Liquidate { .. }
+            | EntryPayload::SettleFunding { .. } => {}
         }
 
         self.last_global_seq = entry.global_seq;

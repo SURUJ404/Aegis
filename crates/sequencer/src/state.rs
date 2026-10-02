@@ -58,6 +58,9 @@ pub enum CancelReason {
     IocRemainder,
     /// Order was rejected by matching policy (PostOnly cross, FOK, STP).
     Rejected,
+    /// Stage 3: reduce-only remainder exceeded the owner's position and was
+    /// cancelled by the margin state machine.
+    ReduceOnly,
 }
 
 /// Side effect produced by applying one log entry. Emitted by the state
@@ -101,6 +104,49 @@ pub enum ApplyOutput {
     Expired {
         order_id: Uuid,
         market: MarketId,
+        ts_ms: u64,
+    },
+    /// Stage 3: collateral moved between a subaccount and the outside world
+    /// (deposit when `amount > 0`, withdrawal when `amount < 0`).
+    Transferred {
+        subaccount: u64,
+        amount: Decimal,
+        collateral_after: Decimal,
+        ts_ms: u64,
+    },
+    /// Stage 3: a position was liquidated at/near its bankruptcy price.
+    Liquidated {
+        subaccount: u64,
+        market: MarketId,
+        quantity: Qty,
+        /// Volume that executed against the book (real counterparties).
+        book_filled: Qty,
+        /// Volume closed against the insurance fund at the limit price.
+        insurance_filled: Qty,
+        limit_price: Price,
+        ts_ms: u64,
+    },
+    /// Stage 3: funding settled for a market; `total` is the sum of all
+    /// payments (always zero — payments are zero-sum across subaccounts).
+    FundingSettled {
+        market: MarketId,
+        rate: Decimal,
+        payments: Vec<(u64, Decimal)>,
+        ts_ms: u64,
+    },
+    /// Stage 3: auto-deleveraging closed a position to restore the insurance
+    /// fund after it was unable to absorb a liquidation shortfall.
+    Adl {
+        subaccount: u64,
+        market: MarketId,
+        quantity: Qty,
+        price: Price,
+        ts_ms: u64,
+    },
+    /// Stage 3: subaccount fell below maintenance margin and was queued for
+    /// liquidation (consumed by the liquidator daemon).
+    MarginFlagged {
+        subaccount: u64,
         ts_ms: u64,
     },
 }
@@ -389,6 +435,11 @@ impl StateMachine for LedgerState {
             }
             EntryPayload::Fill(fill) => self.apply_fill(entry, fill)?,
             EntryPayload::MarketTick(tick) => self.apply_tick(&entry.market, tick),
+            // Stage 3 margin entries have no effect on the Stage-1 ledger:
+            // they advance the sequence but mutate no ledger field.
+            EntryPayload::Transfer { .. }
+            | EntryPayload::Liquidate { .. }
+            | EntryPayload::SettleFunding { .. } => {}
         }
 
         self.last_global_seq = entry.global_seq;

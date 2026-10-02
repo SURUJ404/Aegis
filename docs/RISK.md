@@ -57,3 +57,21 @@ tracked until the remaining quantity is zero.
 - Every limit is testable in isolation (`crates/risk`).
 - A new venue adapter cannot bypass risk: the engine calls `validate_order`
   in the single place where orders leave the process.
+
+## Event-sourced path (`lq-perps`, Stage 3)
+
+On the sequencer path the same limits are enforced **inside `apply`** as
+pre-trade verdicts, so no order can reach the book unchecked:
+
+- `pre_trade_check` evaluates validation, the `PerpsConfig` limits
+  (`max_order_qty`, `max_position_qty`, `max_notional_per_order`,
+  `max_open_orders` — `0` disables) and the initial/maintenance margin
+  requirement, returning `Allow` / `Reduce` (cap the qty, `lq-risk`
+  `place_checked` parity) / `Reject { code }` with a stable reason string.
+- Maintenance margin is the liquidation threshold: below it the subaccount
+  lands in the pending liquidation set; `Liquidate` closes it at the
+  bankruptcy limit price against the book, with the insurance fund as
+  backstop and ADL if the insurance fund goes negative.
+- The legacy `RiskEngine` (this file's table above) still guards the
+  in-process engine path only; the kill switch / `max_daily_loss` semantics
+  are unchanged there until that path is retired (Stage 8).

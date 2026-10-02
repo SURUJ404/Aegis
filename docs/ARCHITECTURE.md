@@ -74,6 +74,7 @@ lq-solana-execution  (depends on lq-types, lq-core, lq-execution, lq-solana-type
 - `lq-backtest` depends on strategy, risk, execution, and orderbook but not on market-data or persistence (it replays events directly).
 - `lq-sequencer` depends only on `lq-types`, `lq-core`, `lq-exchange` — no networking, no wall-clock in the state machine.
 - `lq-clob` depends only on `lq-sequencer` and `lq-types`; matching runs inside `StateMachine::apply` (price-time priority, TIF, STP, cancel/replace — see `docs/stages/STAGE_2_CLOB.md`).
+- `lq-perps` depends only on `lq-sequencer`, `lq-clob` and `lq-types`; it embeds `ClobState` so a fill and its margin update are one `apply` (subaccounts, IM/MM pre-trade checks, liquidation @ bankruptcy price, insurance, ADL, funding — see `docs/stages/STAGE_3_PERPS.md`).
 - `lq-solana-*` crates depend on the corresponding base crates (`lq-types`, `lq-core`, `lq-execution`) and on each other as needed.
 
 ## Event Bus Design

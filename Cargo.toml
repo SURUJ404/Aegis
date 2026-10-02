@@ -16,6 +16,7 @@ members = [
     "crates/api",
     "crates/sequencer",
     "crates/clob",
+    "crates/perps",
     "crates/solana-market-data",
     "apps/trading-engine",
     "apps/market-data-service",

@@ -35,7 +35,7 @@ Features marked **[IMPLEMENTED]** are working and tested. Features marked **[PLA
 | Docker / docker-compose / Kubernetes manifests | **[IMPLEMENTED]** |
 | Event-sourced sequencer (`lq-sequencer`: WAL, snapshot, replay, state hash) | **[IMPLEMENTED]** |
 | Central limit order book (`lq-clob`: price-time match, TIF, STP, cancel/replace, ST expiry) | **[IMPLEMENTED]** |
-| Perpetuals margin & liquidation (`lq-perps`) | **[PLANNED]** |
+| Perpetuals margin & liquidation (`lq-perps`) | **[IMPLEMENTED]** |
 | Signed order gateway (ed25519) | **[PLANNED]** |
 | Raft replication | **[PLANNED]** |
 | Live trading mode | **[PLANNED]** |

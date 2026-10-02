@@ -205,6 +205,8 @@ impl Replay {
             owner: owner_of(owner).to_string(),
             stp: stp_of(stp),
             expiration_ms: st_expire,
+            subaccount: None,
+            reduce_only: false,
         });
         (id, payload)
     }

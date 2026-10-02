@@ -96,6 +96,8 @@ fn place_owned(
         owner: owner.to_string(),
         stp,
         expiration_ms,
+        subaccount: None,
+        reduce_only: false,
     })
 }
 
