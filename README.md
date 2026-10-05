@@ -8,7 +8,6 @@ A multi-venue crypto liquidity engine written in Rust. Aegis is a local order bo
   </a>
 </p>
 
-<h1 align="center">Aegis</h1>
 
 ## Problem
 
