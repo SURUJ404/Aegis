@@ -2,6 +2,14 @@
 
 A multi-venue crypto liquidity engine written in Rust. Aegis is a local order book, market data pipeline, strategy engine, risk gate, and execution layer designed for deterministic backtesting and paper trading. Live trading is not yet implemented.
 
+<p align="center">
+  <a href="https://youtu.be/d5GNK2ZURvE">
+    <img src="https://img.youtube.com/vi/d5GNK2ZURvE/maxresdefault.jpg" alt="Aegis Demo" width="900">
+  </a>
+</p>
+
+<h1 align="center">Aegis</h1>
+
 ## Problem
 
 Market making across centralized and decentralized venues requires:
