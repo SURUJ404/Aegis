@@ -42,7 +42,8 @@ fn load_config(cli: &Cli) -> anyhow::Result<EngineConfig> {
     match &cli.config {
         Some(path) => {
             let text = std::fs::read_to_string(path)?;
-            EngineConfig::from_toml_with_env(&text).map_err(|e| anyhow::anyhow!("config parse error: {e}"))
+            EngineConfig::from_toml_with_env(&text)
+                .map_err(|e| anyhow::anyhow!("config parse error: {e}"))
         }
         None => Ok(EngineConfig::default()),
     }
@@ -151,7 +152,8 @@ async fn run() -> anyhow::Result<()> {
 }
 
 fn cfg_symbol_seed(symbol: &Symbol) -> u64 {
-    symbol.as_str().bytes().fold(0x5EED, |acc, b| {
-        acc.wrapping_mul(31).wrapping_add(b as u64)
-    })
+    symbol
+        .as_str()
+        .bytes()
+        .fold(0x5EED, |acc, b| acc.wrapping_mul(31).wrapping_add(b as u64))
 }

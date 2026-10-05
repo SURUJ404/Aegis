@@ -4,7 +4,10 @@ use solana_client::rpc_client::RpcClient;
 use solana_sdk::pubkey::Pubkey;
 use std::sync::Arc;
 
-use crate::models::{NormalizedSolanaEvent, SolanaMarket, SolanaProtocol, SolanaEventType, SolanaEventPayload, SolanaEventMetadata};
+use crate::models::{
+    NormalizedSolanaEvent, SolanaEventMetadata, SolanaEventPayload, SolanaEventType, SolanaMarket,
+    SolanaProtocol,
+};
 
 /// RPC client configuration
 #[derive(Debug, Clone)]
@@ -36,7 +39,10 @@ impl RpcSnapshotClient {
             config.endpoint.clone(),
             solana_sdk::commitment_config::CommitmentConfig::processed(),
         ));
-        Self { client, _config: config }
+        Self {
+            client,
+            _config: config,
+        }
     }
 
     /// Fetch order book snapshot for a market
@@ -66,7 +72,10 @@ impl RpcSnapshotClient {
     }
 
     /// Fetch multiple account snapshots (for batch initialization)
-    pub async fn fetch_multiple(&self, markets: &[SolanaMarket]) -> Result<Vec<NormalizedSolanaEvent>> {
+    pub async fn fetch_multiple(
+        &self,
+        markets: &[SolanaMarket],
+    ) -> Result<Vec<NormalizedSolanaEvent>> {
         let mut events = Vec::with_capacity(markets.len());
         for market in markets {
             match self.fetch_snapshot(market).await {
@@ -79,13 +88,24 @@ impl RpcSnapshotClient {
         Ok(events)
     }
 
-    fn parse_pool_account(&self, _data: &[u8], _protocol: SolanaProtocol) -> Result<(Vec<crate::models::OrderBookLevelData>, Vec<crate::models::OrderBookLevelData>)> {
+    fn parse_pool_account(
+        &self,
+        _data: &[u8],
+        _protocol: SolanaProtocol,
+    ) -> Result<(
+        Vec<crate::models::OrderBookLevelData>,
+        Vec<crate::models::OrderBookLevelData>,
+    )> {
         // All parsing requires borsh schemas - return empty for now
         Ok((vec![], vec![]))
     }
 }
 
 /// Helper to create a market from pool address
-pub fn create_market_from_pool(protocol: SolanaProtocol, symbol: Symbol, pool_address: String) -> SolanaMarket {
+pub fn create_market_from_pool(
+    protocol: SolanaProtocol,
+    symbol: Symbol,
+    pool_address: String,
+) -> SolanaMarket {
     SolanaMarket::new(protocol, symbol, pool_address)
 }

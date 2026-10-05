@@ -147,7 +147,9 @@ impl<T: Clone + Send + 'static> Topic<T> {
             while let Some(item) = rx.recv().await {
                 let sub_senders = broker_subs.lock();
                 if sub_senders.is_empty() {
-                    broker_state.no_subscribers.fetch_add(1, AtomicOrdering::Relaxed);
+                    broker_state
+                        .no_subscribers
+                        .fetch_add(1, AtomicOrdering::Relaxed);
                     continue;
                 }
                 for (_, tx) in sub_senders.iter() {
@@ -306,7 +308,10 @@ mod tests {
         let bus = EventBus::new();
         let mut sub = bus.market().subscribe();
         for seq in 1..=10 {
-            assert_eq!(bus.market().try_publish(sample_delta(seq)), PublishResult::Published);
+            assert_eq!(
+                bus.market().try_publish(sample_delta(seq)),
+                PublishResult::Published
+            );
         }
         for seq in 1..=10 {
             match sub.recv().await {

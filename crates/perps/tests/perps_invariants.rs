@@ -229,7 +229,9 @@ fn run(log: &[LogEntry]) -> (PerpsState, Vec<Vec<ApplyOutput>>) {
     let mut sm = PerpsState::with_config(config());
     let mut outputs = Vec::with_capacity(log.len());
     for (i, e) in log.iter().enumerate() {
-        let out = sm.apply(e).unwrap_or_else(|err| panic!("entry {i} must not gap: {err}"));
+        let out = sm
+            .apply(e)
+            .unwrap_or_else(|err| panic!("entry {i} must not gap: {err}"));
         sm.check_invariants()
             .unwrap_or_else(|v| panic!("invariant violated after entry {i} ({e:?}): {v}"));
         outputs.push(out);

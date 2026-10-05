@@ -10,12 +10,17 @@ lq-types = { path = "../types" }
 lq-core = { path = "../core" }
 lq-telemetry = { path = "../telemetry" }
 lq-execution = { path = "../execution" }
+lq-sequencer = { path = "../sequencer" }
+lq-clob = { path = "../clob" }
+lq-orderbook = { path = "../orderbook" }
 axum = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
 thiserror = { workspace = true }
+uuid = { workspace = true }
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
+tempfile = "3"

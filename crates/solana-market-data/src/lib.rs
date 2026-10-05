@@ -7,10 +7,13 @@ pub mod ws;
 
 pub use adapter::{SolanaFeedConfig, SolanaMarketDataAdapter};
 pub use decoder::SolanaEventDecoder;
-pub use geyser::{GeyserClient, GeyserConfig, GeyserEventSource, run_geyser_feed};
-pub use models::{NormalizedSolanaEvent, SolanaEventMetadata, SolanaMarket, SolanaProtocol, SolanaEventPayload, SolanaEventType};
-pub use rpc::{RpcSnapshotClient, RpcConfig};
-pub use ws::{LogsSubscribeClient, SolanaWsConfig, run_logs_feed};
+pub use geyser::{run_geyser_feed, GeyserClient, GeyserConfig, GeyserEventSource};
+pub use models::{
+    NormalizedSolanaEvent, SolanaEventMetadata, SolanaEventPayload, SolanaEventType, SolanaMarket,
+    SolanaProtocol,
+};
+pub use rpc::{RpcConfig, RpcSnapshotClient};
+pub use ws::{run_logs_feed, LogsSubscribeClient, SolanaWsConfig};
 
 use lq_core::event::{FeedStatus, MarketEvent};
 use lq_types::{Exchange, TimestampMs};

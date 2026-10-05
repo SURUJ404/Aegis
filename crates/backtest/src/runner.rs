@@ -6,19 +6,18 @@ use std::sync::Arc;
 use lq_core::bus::EventBus;
 use lq_core::config::{MarketMakingConfig, PaperSimConfig, RiskConfig};
 use lq_core::event::{ExecutionEvent, MarketEvent};
-use lq_core::models::{MarketState, MarketRegime, Order, StrategyDecision};
+use lq_core::models::{MarketRegime, MarketState, Order, StrategyDecision};
+use lq_exchange::spec::InstrumentSpec;
 use lq_execution::paper::PaperExecutionVenue;
 use lq_execution::positions::PositionManager;
 use lq_execution::venue::{ExecutionVenue, OrderPlacement};
-use lq_exchange::spec::InstrumentSpec;
 use lq_orderbook::book::OrderBook;
-use lq_risk::engine::RiskEngine;
 use lq_risk::decision::RiskDecision;
+use lq_risk::engine::RiskEngine;
 use lq_strategy::{MarketMakingStrategy, StrategyEngine};
 use lq_types::{Amount, Exchange, OrderType, Price, Qty, Side, Symbol, TimestampMs};
 use parking_lot::RwLock;
 use rust_decimal::Decimal;
-
 
 use crate::metrics::{compute, BacktestResult, EquitySample, PerfMetrics};
 
@@ -99,14 +98,13 @@ impl BacktestRunner {
 
         // Market orders price against the live backtest book.
         let book_for_prices = book.clone();
-        let price_provider: lq_execution::paper::PriceProvider =
-            Arc::new(move |sym| {
-                let b = book_for_prices.read();
-                match (b.best_bid(), b.best_ask()) {
-                    (Some(bid), Some(ask)) if b.symbol == *sym => Some((bid, ask)),
-                    _ => None,
-                }
-            });
+        let price_provider: lq_execution::paper::PriceProvider = Arc::new(move |sym| {
+            let b = book_for_prices.read();
+            match (b.best_bid(), b.best_ask()) {
+                (Some(bid), Some(ask)) if b.symbol == *sym => Some((bid, ask)),
+                _ => None,
+            }
+        });
 
         let venue = Arc::new(
             PaperExecutionVenue::with_seed(cfg.venue, paper, bus.clone(), cfg.seed, false)
@@ -149,7 +147,7 @@ impl BacktestRunner {
         }
     }
 
-pub fn config(&self) -> &BacktestConfig {
+    pub fn config(&self) -> &BacktestConfig {
         &self.cfg
     }
 
@@ -176,7 +174,7 @@ pub fn config(&self) -> &BacktestConfig {
             }
         }
 
-// Final mark.
+        // Final mark.
         self.sample_equity();
 
         let metrics = self.finish_metrics();
@@ -242,9 +240,13 @@ pub fn config(&self) -> &BacktestConfig {
             .get(&(self.cfg.venue, self.cfg.symbol.clone()))
             .map(|p| p.clone());
 
-        let decisions = self
-            .strategies
-            .on_market_state(&market, inventory.as_ref(), position.as_ref(), halted, true);
+        let decisions = self.strategies.on_market_state(
+            &market,
+            inventory.as_ref(),
+            position.as_ref(),
+            halted,
+            true,
+        );
 
         for decision in decisions {
             match decision {
@@ -255,8 +257,10 @@ pub fn config(&self) -> &BacktestConfig {
                     // Respect the strategy's quote refresh cadence: leave
                     // resting quotes untouched until the interval elapses.
                     let due = match self.last_quote_ts {
-                        Some(last) => market.event_ts.as_u64().saturating_sub(last.as_u64())
-                            >= self.cfg.mm.quote_refresh_ms,
+                        Some(last) => {
+                            market.event_ts.as_u64().saturating_sub(last.as_u64())
+                                >= self.cfg.mm.quote_refresh_ms
+                        }
                         None => true,
                     };
                     if !due {
@@ -274,7 +278,8 @@ pub fn config(&self) -> &BacktestConfig {
                             Some(bid.price),
                             bid.qty,
                         );
-                        self.place_checked(&mut o, market.mid, market.event_ts).await;
+                        self.place_checked(&mut o, market.mid, market.event_ts)
+                            .await;
                     }
                     if let Some(ask) = intent.ask {
                         let mut o = Order::new(
@@ -285,7 +290,8 @@ pub fn config(&self) -> &BacktestConfig {
                             Some(ask.price),
                             ask.qty,
                         );
-                        self.place_checked(&mut o, market.mid, market.event_ts).await;
+                        self.place_checked(&mut o, market.mid, market.event_ts)
+                            .await;
                     }
                 }
                 StrategyDecision::MarketOrder(sig) => {
@@ -300,7 +306,8 @@ pub fn config(&self) -> &BacktestConfig {
                         Some(sig.price),
                         sig.qty,
                     );
-                    self.place_checked(&mut o, market.mid, market.event_ts).await;
+                    self.place_checked(&mut o, market.mid, market.event_ts)
+                        .await;
                 }
                 StrategyDecision::StandDown { .. } => {
                     let _ = self.venue.cancel_all(Some(&self.cfg.symbol)).await;
@@ -310,7 +317,7 @@ pub fn config(&self) -> &BacktestConfig {
         }
     }
 
-async fn place_checked(&mut self, order: &mut Order, mark: Price, now: TimestampMs) {
+    async fn place_checked(&mut self, order: &mut Order, mark: Price, now: TimestampMs) {
         match self.risk.validate_order_at(order, mark, now) {
             RiskDecision::Allow => {
                 self.place(order).await;
@@ -323,12 +330,18 @@ async fn place_checked(&mut self, order: &mut Order, mark: Price, now: Timestamp
             }
             RiskDecision::Reject(r) => {
                 self.rejected += 1;
-                *self.reject_breakdown.entry(r.code.as_str().to_string()).or_default() += 1;
+                *self
+                    .reject_breakdown
+                    .entry(r.code.as_str().to_string())
+                    .or_default() += 1;
                 tracing::debug!(order = %order.order_id, code = ?r.code, "risk reject");
             }
             RiskDecision::Halt(r) => {
                 self.rejected += 1;
-                *self.reject_breakdown.entry(r.code.as_str().to_string()).or_default() += 1;
+                *self
+                    .reject_breakdown
+                    .entry(r.code.as_str().to_string())
+                    .or_default() += 1;
             }
         }
     }
@@ -345,7 +358,7 @@ async fn place_checked(&mut self, order: &mut Order, mark: Price, now: Timestamp
         }
     }
 
-/// Match resting maker orders against the current book.
+    /// Match resting maker orders against the current book.
     async fn sweep_maker_fills(&mut self) {
         let ids = self.venue.working_order_ids();
         for id in ids {
@@ -480,7 +493,10 @@ async fn place_checked(&mut self, order: &mut Order, mark: Price, now: Timestamp
     fn sample_equity(&mut self) {
         let (bid, ask) = {
             let b = self.book.read();
-            (b.best_bid().unwrap_or_default(), b.best_ask().unwrap_or_default())
+            (
+                b.best_bid().unwrap_or_default(),
+                b.best_ask().unwrap_or_default(),
+            )
         };
         let mark = if bid > Amount::ZERO && ask > Amount::ZERO {
             (bid + ask) / Decimal::from(2)
@@ -563,7 +579,7 @@ mod tests {
                 ..SyntheticDataConfig::default()
             },
         );
-let now = TimestampMs::now();
+        let now = TimestampMs::now();
         let mut events = vec![gen.initial_snapshot(now)];
         for i in 1..count {
             events.extend(gen.next_events(TimestampMs(now.as_u64() + i * 100)));
@@ -571,7 +587,7 @@ let now = TimestampMs::now();
         events
     }
 
-#[test]
+    #[test]
     fn deterministic_across_runs() {
         let events = synth_events(300, 11);
         let rt = tokio::runtime::Builder::new_current_thread()
@@ -665,7 +681,7 @@ let now = TimestampMs::now();
             exchange_ts: TimestampMs::now(),
             bids: vec![OrderBookLevel::new(dec!(99.0), dec!(10.0))],
             asks: vec![OrderBookLevel::new(dec!(101.0), dec!(10.0))],
-})];
+        })];
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
@@ -679,5 +695,3 @@ let now = TimestampMs::now();
         assert_eq!(res.open_orders_at_end, 2);
     }
 }
-
-

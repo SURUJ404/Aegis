@@ -145,10 +145,7 @@ pub enum ApplyOutput {
     },
     /// Stage 3: subaccount fell below maintenance margin and was queued for
     /// liquidation (consumed by the liquidator daemon).
-    MarginFlagged {
-        subaccount: u64,
-        ts_ms: u64,
-    },
+    MarginFlagged { subaccount: u64, ts_ms: u64 },
     /// Stage 4: an oracle price publication was accepted for `market`;
     /// `price` becomes the reference price for margin, liquidation and
     /// funding in that market (dYdX `x/prices` update analogue).

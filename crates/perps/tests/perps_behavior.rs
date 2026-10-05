@@ -109,7 +109,15 @@ fn place(
     subaccount: Option<u64>,
     reduce_only: bool,
 ) -> EntryPayload {
-    place_tif(id, side, price, qty, subaccount, reduce_only, TimeInForce::Gtc)
+    place_tif(
+        id,
+        side,
+        price,
+        qty,
+        subaccount,
+        reduce_only,
+        TimeInForce::Gtc,
+    )
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -183,18 +191,22 @@ fn find_adl(out: &[ApplyOutput]) -> Option<(u64, Qty, Price)> {
 }
 
 fn has_margin_flagged(out: &[ApplyOutput], sub: u64) -> bool {
-    out.iter().any(|o| matches!(
-        o,
-        ApplyOutput::MarginFlagged { subaccount, .. } if *subaccount == sub
-    ))
+    out.iter().any(|o| {
+        matches!(
+            o,
+            ApplyOutput::MarginFlagged { subaccount, .. } if *subaccount == sub
+        )
+    })
 }
 
 fn has_reduce_only_cancel(out: &[ApplyOutput], id: Uuid) -> bool {
-    out.iter().any(|o| matches!(
-        o,
-        ApplyOutput::Cancelled { order_id, reason: CancelReason::ReduceOnly, .. }
-            if *order_id == id
-    ))
+    out.iter().any(|o| {
+        matches!(
+            o,
+            ApplyOutput::Cancelled { order_id, reason: CancelReason::ReduceOnly, .. }
+                if *order_id == id
+        )
+    })
 }
 
 // ---- transfers ------------------------------------------------------------
@@ -256,12 +268,26 @@ fn fills_update_both_subaccounts_atomically_and_credit_fees() {
     fx.apply(
         &m,
         4,
-        place(Uuid::from_u128(1), Side::Ask, Some(dec!(100)), dec!(1), Some(0), false),
+        place(
+            Uuid::from_u128(1),
+            Side::Ask,
+            Some(dec!(100)),
+            dec!(1),
+            Some(0),
+            false,
+        ),
     );
     let out = fx.apply(
         &m,
         5,
-        place(Uuid::from_u128(2), Side::Bid, Some(dec!(100)), dec!(1), Some(1), false),
+        place(
+            Uuid::from_u128(2),
+            Side::Bid,
+            Some(dec!(100)),
+            dec!(1),
+            Some(1),
+            false,
+        ),
     );
     assert!(out.iter().any(|o| matches!(o, ApplyOutput::Fill { .. })));
 
@@ -294,7 +320,10 @@ fn insufficient_margin_rejects_before_reaching_the_book() {
         place(id, Side::Bid, Some(dec!(100)), dec!(1), Some(1), false),
     );
     assert_eq!(only_reason(&out), Some("insufficient_margin"));
-    assert!(fx.sm.clob().order(id).is_none(), "order never reached the book");
+    assert!(
+        fx.sm.clob().order(id).is_none(),
+        "order never reached the book"
+    );
     assert_eq!(fx.sm.position(1, &m), Decimal::ZERO);
     assert_eq!(fx.sm.collateral(1), dec!(1));
     assert_eq!(fx.sm.stats().margin_rejected, 1);
@@ -319,7 +348,9 @@ fn max_order_qty_reduces_the_order_instead_of_rejecting() {
         place(id, Side::Bid, Some(dec!(99)), dec!(2), Some(0), false),
     );
     assert!(out.iter().any(|o| matches!(o, ApplyOutput::Placed { .. })));
-    assert!(!out.iter().any(|o| matches!(o, ApplyOutput::Rejected { .. })));
+    assert!(!out
+        .iter()
+        .any(|o| matches!(o, ApplyOutput::Rejected { .. })));
     let order = fx.sm.clob().order(id).expect("reduced order rests");
     assert_eq!(order.quantity, dec!(1));
     assert_eq!(fx.sm.stats().margin_rejected, 0);
@@ -381,7 +412,14 @@ fn max_open_orders_caps_resting_orders_per_subaccount() {
     fx.apply(
         &m,
         3,
-        place(Uuid::from_u128(20), Side::Bid, Some(dec!(99)), dec!(1), Some(0), false),
+        place(
+            Uuid::from_u128(20),
+            Side::Bid,
+            Some(dec!(99)),
+            dec!(1),
+            Some(0),
+            false,
+        ),
     );
     let id = Uuid::from_u128(21);
     let out = fx.apply(
@@ -413,7 +451,11 @@ fn pre_trade_check_is_pure_and_reasoned() {
     let v2 = fx.sm.pre_trade_check(&m, &cmd, None);
     assert_eq!(v1, v2);
     assert_eq!(v1.as_str(), "insufficient_margin");
-    assert_eq!(fx.sm.state_hash(), before, "pre_trade_check must not mutate");
+    assert_eq!(
+        fx.sm.state_hash(),
+        before,
+        "pre_trade_check must not mutate"
+    );
 }
 
 // ---- reduce-only ----------------------------------------------------------
@@ -429,12 +471,26 @@ fn reduce_only_orders_cannot_exceed_the_position_at_place_time() {
     fx.apply(
         &m,
         4,
-        place(Uuid::from_u128(1), Side::Ask, Some(dec!(100)), dec!(1), Some(0), false),
+        place(
+            Uuid::from_u128(1),
+            Side::Ask,
+            Some(dec!(100)),
+            dec!(1),
+            Some(0),
+            false,
+        ),
     );
     fx.apply(
         &m,
         5,
-        place(Uuid::from_u128(2), Side::Bid, Some(dec!(100)), dec!(1), Some(1), false),
+        place(
+            Uuid::from_u128(2),
+            Side::Bid,
+            Some(dec!(100)),
+            dec!(1),
+            Some(1),
+            false,
+        ),
     );
     assert_eq!(fx.sm.position(1, &m), dec!(1));
 
@@ -471,18 +527,39 @@ fn reduce_only_orders_auto_cancel_when_the_position_shrinks() {
     fx.apply(
         &m,
         4,
-        place(Uuid::from_u128(1), Side::Ask, Some(dec!(100)), dec!(1), Some(0), false),
+        place(
+            Uuid::from_u128(1),
+            Side::Ask,
+            Some(dec!(100)),
+            dec!(1),
+            Some(0),
+            false,
+        ),
     );
     fx.apply(
         &m,
         5,
-        place(Uuid::from_u128(2), Side::Bid, Some(dec!(100)), dec!(1), Some(1), false),
+        place(
+            Uuid::from_u128(2),
+            Side::Bid,
+            Some(dec!(100)),
+            dec!(1),
+            Some(1),
+            false,
+        ),
     );
     // sub0 rests a bid so sub1 can close its long later.
     fx.apply(
         &m,
         6,
-        place(Uuid::from_u128(3), Side::Bid, Some(dec!(95)), dec!(1), Some(0), false),
+        place(
+            Uuid::from_u128(3),
+            Side::Bid,
+            Some(dec!(95)),
+            dec!(1),
+            Some(0),
+            false,
+        ),
     );
     // Reduce-only ask (reduce the long) rests above the market.
     let ro = Uuid::from_u128(4);
@@ -497,7 +574,14 @@ fn reduce_only_orders_auto_cancel_when_the_position_shrinks() {
     let out = fx.apply(
         &m,
         8,
-        place(Uuid::from_u128(5), Side::Ask, Some(dec!(95)), dec!(1), Some(1), false),
+        place(
+            Uuid::from_u128(5),
+            Side::Ask,
+            Some(dec!(95)),
+            dec!(1),
+            Some(1),
+            false,
+        ),
     );
     assert_eq!(fx.sm.position(1, &m), Decimal::ZERO);
     assert!(
@@ -519,12 +603,26 @@ fn funding_settlement_is_zero_sum_and_conserves_collateral() {
     fx.apply(
         &m,
         4,
-        place(Uuid::from_u128(1), Side::Ask, Some(dec!(100)), dec!(1), Some(0), false),
+        place(
+            Uuid::from_u128(1),
+            Side::Ask,
+            Some(dec!(100)),
+            dec!(1),
+            Some(0),
+            false,
+        ),
     );
     fx.apply(
         &m,
         5,
-        place(Uuid::from_u128(2), Side::Bid, Some(dec!(100)), dec!(1), Some(1), false),
+        place(
+            Uuid::from_u128(2),
+            Side::Bid,
+            Some(dec!(100)),
+            dec!(1),
+            Some(1),
+            false,
+        ),
     );
 
     let out = fx.apply(&m, 6, settle_funding(dec!(0.01)));
@@ -537,7 +635,10 @@ fn funding_settlement_is_zero_sum_and_conserves_collateral() {
     };
     // Long pays 1, short receives 1 (rate 0.01 × mark 100 = 1).
     assert_eq!(payments, vec![(0, dec!(-1)), (1, dec!(1))]);
-    assert_eq!(payments.iter().map(|(_, p)| *p).sum::<Decimal>(), Decimal::ZERO);
+    assert_eq!(
+        payments.iter().map(|(_, p)| *p).sum::<Decimal>(),
+        Decimal::ZERO
+    );
     assert_eq!(fx.sm.collateral(0), dec!(10_101));
     assert_eq!(fx.sm.collateral(1), dec!(398.95));
     assert_eq!(fx.sm.funding_index(&m), dec!(1));
@@ -580,18 +681,39 @@ fn liquidation_fills_against_the_book_at_the_bankruptcy_floor() {
     fx.apply(
         &m,
         5,
-        place(Uuid::from_u128(1), Side::Bid, Some(dec!(100)), dec!(1), Some(1), false),
+        place(
+            Uuid::from_u128(1),
+            Side::Bid,
+            Some(dec!(100)),
+            dec!(1),
+            Some(1),
+            false,
+        ),
     );
     fx.apply(
         &m,
         6,
-        place(Uuid::from_u128(2), Side::Ask, Some(dec!(100)), dec!(1), Some(2), false),
+        place(
+            Uuid::from_u128(2),
+            Side::Ask,
+            Some(dec!(100)),
+            dec!(1),
+            Some(2),
+            false,
+        ),
     );
     // sub0 rests a bid at 94 (deep below mark but above the bankruptcy floor).
     fx.apply(
         &m,
         7,
-        place(Uuid::from_u128(3), Side::Bid, Some(dec!(94)), dec!(1), Some(0), false),
+        place(
+            Uuid::from_u128(3),
+            Side::Bid,
+            Some(dec!(94)),
+            dec!(1),
+            Some(0),
+            false,
+        ),
     );
 
     // Crash: sub1 equity = −80 + 84 = 4 < mm 4.2 ⇒ flagged.
@@ -608,7 +730,11 @@ fn liquidation_fills_against_the_book_at_the_bankruptcy_floor() {
     // Bankruptcy floor: mark + (fee − equity)/qty = 84 + (0.042 − 4) = 80.042.
     assert_eq!(limit, dec!(80.042));
 
-    assert_eq!(fx.sm.position(1, &m), Decimal::ZERO, "position fully closed");
+    assert_eq!(
+        fx.sm.position(1, &m),
+        Decimal::ZERO,
+        "position fully closed"
+    );
     assert_eq!(fx.sm.collateral(1), dec!(13.953)); // −80 + 94 − 0.047
     assert_eq!(fx.sm.position(0, &m), dec!(1));
     assert_eq!(fx.sm.collateral(0), dec!(9_906));
@@ -635,12 +761,26 @@ fn insurance_residual_triggers_adl_that_restores_the_fund() {
     fx.apply(
         &m,
         4,
-        place(Uuid::from_u128(1), Side::Bid, Some(dec!(100)), dec!(1), Some(1), false),
+        place(
+            Uuid::from_u128(1),
+            Side::Bid,
+            Some(dec!(100)),
+            dec!(1),
+            Some(1),
+            false,
+        ),
     );
     fx.apply(
         &m,
         5,
-        place(Uuid::from_u128(2), Side::Ask, Some(dec!(100)), dec!(1), Some(2), false),
+        place(
+            Uuid::from_u128(2),
+            Side::Ask,
+            Some(dec!(100)),
+            dec!(1),
+            Some(2),
+            false,
+        ),
     );
 
     // Crash to 40: sub1 equity = −80.05 + 40 = −40.05 ⇒ flagged.
@@ -691,12 +831,26 @@ fn liquidating_a_flat_or_healthy_subaccount_is_rejected() {
     fx.apply(
         &m,
         5,
-        place(Uuid::from_u128(1), Side::Ask, Some(dec!(100)), dec!(1), Some(0), false),
+        place(
+            Uuid::from_u128(1),
+            Side::Ask,
+            Some(dec!(100)),
+            dec!(1),
+            Some(0),
+            false,
+        ),
     );
     fx.apply(
         &m,
         6,
-        place(Uuid::from_u128(2), Side::Bid, Some(dec!(100)), dec!(1), Some(1), false),
+        place(
+            Uuid::from_u128(2),
+            Side::Bid,
+            Some(dec!(100)),
+            dec!(1),
+            Some(1),
+            false,
+        ),
     );
     let out = fx.apply(&m, 7, liquidate(1, None));
     assert_eq!(only_reason(&out), Some("healthy_subaccount"));
@@ -722,17 +876,38 @@ fn liquidation_cascade_breaker_rejects_within_the_window() {
     fx.apply(
         &m,
         5,
-        place(Uuid::from_u128(1), Side::Ask, Some(dec!(100)), dec!(2), Some(0), false),
+        place(
+            Uuid::from_u128(1),
+            Side::Ask,
+            Some(dec!(100)),
+            dec!(2),
+            Some(0),
+            false,
+        ),
     );
     fx.apply(
         &m,
         6,
-        place(Uuid::from_u128(2), Side::Bid, Some(dec!(100)), dec!(1), Some(1), false),
+        place(
+            Uuid::from_u128(2),
+            Side::Bid,
+            Some(dec!(100)),
+            dec!(1),
+            Some(1),
+            false,
+        ),
     );
     fx.apply(
         &m,
         7,
-        place(Uuid::from_u128(3), Side::Bid, Some(dec!(100)), dec!(1), Some(3), false),
+        place(
+            Uuid::from_u128(3),
+            Side::Bid,
+            Some(dec!(100)),
+            dec!(1),
+            Some(3),
+            false,
+        ),
     );
     // Crash: both buyers are underwater (equity −40.05 < mm 2).
     let out = fx.apply(&m, 8, tick(dec!(40)));
@@ -750,7 +925,11 @@ fn liquidation_cascade_breaker_rejects_within_the_window() {
     // Second within the window: breaker rejects it.
     let out = fx.apply(&m, 10, liquidate(3, None));
     assert_eq!(only_reason(&out), Some("liquidation_cascade"));
-    assert_eq!(fx.sm.stats().liquidations, 1, "second liquidation did not run");
+    assert_eq!(
+        fx.sm.stats().liquidations,
+        1,
+        "second liquidation did not run"
+    );
     assert_eq!(fx.sm.position(3, &m), dec!(1), "position untouched");
     assert_eq!(fx.sm.pending_liquidations(), vec![3], "still queued");
 }
@@ -783,10 +962,7 @@ fn legacy_fill_entries_advance_the_book_but_not_subaccounts() {
     );
     // The CLOB consumes the fill; subaccount cash/positions do not move
     // (the external counterparty is unknown — documented Stage-1 legacy path).
-    assert_eq!(
-        fx.sm.clob().order(id).unwrap().status,
-        OrderStatus::Filled
-    );
+    assert_eq!(fx.sm.clob().order(id).unwrap().status, OrderStatus::Filled);
     assert_eq!(fx.sm.position(0, &m), Decimal::ZERO);
     assert_eq!(fx.sm.collateral(0), dec!(10_000));
     assert!(!out.iter().any(|o| matches!(o, ApplyOutput::Fill { .. })));
@@ -807,7 +983,10 @@ fn sequence_gaps_are_errors_while_command_rejections_are_ok() {
     };
     assert!(matches!(
         sm.apply(&gap),
-        Err(ApplyError::GlobalSeqGap { expected: 1, got: 2 })
+        Err(ApplyError::GlobalSeqGap {
+            expected: 1,
+            got: 2
+        })
     ));
 
     // Market gap (global ok).
@@ -861,18 +1040,39 @@ fn behavior_log() -> Vec<LogEntry> {
         lb.next(
             &m,
             5,
-            place(Uuid::from_u128(1), Side::Bid, Some(dec!(100)), dec!(1), Some(1), false),
+            place(
+                Uuid::from_u128(1),
+                Side::Bid,
+                Some(dec!(100)),
+                dec!(1),
+                Some(1),
+                false,
+            ),
         ),
         lb.next(
             &m,
             6,
-            place(Uuid::from_u128(2), Side::Ask, Some(dec!(100)), dec!(1), Some(2), false),
+            place(
+                Uuid::from_u128(2),
+                Side::Ask,
+                Some(dec!(100)),
+                dec!(1),
+                Some(2),
+                false,
+            ),
         ),
         // Reduce-only ask resting above market for sub1.
         lb.next(
             &m,
             7,
-            place(Uuid::from_u128(3), Side::Ask, Some(dec!(110)), dec!(1), Some(1), true),
+            place(
+                Uuid::from_u128(3),
+                Side::Ask,
+                Some(dec!(110)),
+                dec!(1),
+                Some(1),
+                true,
+            ),
         ),
         // Crash ⇒ flag, liquidate, insurance residual, ADL, RO auto-cancel.
         lb.next(&m, 8, tick(dec!(40))),
@@ -885,7 +1085,14 @@ fn behavior_log() -> Vec<LogEntry> {
         lb.next(
             &m,
             12,
-            place(Uuid::from_u128(4), Side::Bid, Some(dec!(39)), dec!(1), Some(0), false),
+            place(
+                Uuid::from_u128(4),
+                Side::Bid,
+                Some(dec!(39)),
+                dec!(1),
+                Some(0),
+                false,
+            ),
         ),
         lb.next(
             &m,
@@ -902,7 +1109,14 @@ fn behavior_log() -> Vec<LogEntry> {
         lb.next(
             &m,
             14,
-            place(Uuid::from_u128(5), Side::Bid, Some(dec!(30)), dec!(2), Some(0), false),
+            place(
+                Uuid::from_u128(5),
+                Side::Bid,
+                Some(dec!(30)),
+                dec!(2),
+                Some(0),
+                false,
+            ),
         ),
         lb.next(
             &m,
@@ -936,7 +1150,9 @@ fn same_log_applied_twice_yields_identical_hashes_and_outputs() {
     // Sanity: the log actually exercised the interesting machinery.
     let flat: Vec<&ApplyOutput> = o1.iter().flatten().collect();
     assert!(flat.iter().any(|o| matches!(o, ApplyOutput::Fill { .. })));
-    assert!(flat.iter().any(|o| matches!(o, ApplyOutput::Liquidated { .. })));
+    assert!(flat
+        .iter()
+        .any(|o| matches!(o, ApplyOutput::Liquidated { .. })));
     assert!(flat.iter().any(|o| matches!(o, ApplyOutput::Adl { .. })));
     assert!(flat.iter().any(|o| matches!(
         o,
@@ -1019,7 +1235,14 @@ fn default_subaccount_is_used_when_none_is_named() {
     fx.apply(
         &m,
         3,
-        place(Uuid::from_u128(1), Side::Bid, Some(dec!(99)), dec!(1), None, false),
+        place(
+            Uuid::from_u128(1),
+            Side::Bid,
+            Some(dec!(99)),
+            dec!(1),
+            None,
+            false,
+        ),
     );
     // The resting order belongs to subaccount 0.
     assert_eq!(fx.sm.position(DEFAULT_SUBACCOUNT, &m), Decimal::ZERO);

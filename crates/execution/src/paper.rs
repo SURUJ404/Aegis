@@ -23,9 +23,7 @@ use lq_core::bus::EventBus;
 use lq_core::config::PaperSimConfig;
 use lq_core::event::ExecutionEvent;
 use lq_core::models::{FillEvent, Order, Position};
-use lq_types::{
-    Amount, Exchange, OrderStatus, OrderType, Price, Qty, Side, Symbol, TimestampMs,
-};
+use lq_types::{Amount, Exchange, OrderStatus, OrderType, Price, Qty, Side, Symbol, TimestampMs};
 use parking_lot::Mutex;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
@@ -198,8 +196,7 @@ impl PaperExecutionVenue {
         };
         let notional = price * qty;
         let fee = notional
-            * (Amount::from_f64_retain(fee_bps).unwrap_or_default()
-                / Amount::from(10_000));
+            * (Amount::from_f64_retain(fee_bps).unwrap_or_default() / Amount::from(10_000));
 
         let (side, event_ts, fill_event) = {
             let mut orders = self.orders.lock();
@@ -228,15 +225,20 @@ impl PaperExecutionVenue {
 
     /// Keep the venue's internal position view consistent with fills. The
     /// engine-level position tracking lives in the position manager.
-    fn apply_fill_to_position(&self, symbol: &Symbol, side: Side, price: Price, qty: Qty, fee: Amount) {
+    fn apply_fill_to_position(
+        &self,
+        symbol: &Symbol,
+        side: Side,
+        price: Price,
+        qty: Qty,
+        fee: Amount,
+    ) {
         let mut positions = self.positions.lock();
-        let mut pos = positions
-            .remove(symbol)
-            .unwrap_or_else(|| Position {
-                venue: self.venue,
-                symbol: symbol.clone(),
-                ..Position::default()
-            });
+        let mut pos = positions.remove(symbol).unwrap_or_else(|| Position {
+            venue: self.venue,
+            symbol: symbol.clone(),
+            ..Position::default()
+        });
         let signed = match side {
             Side::Bid => qty,
             Side::Ask => -qty,
@@ -335,7 +337,8 @@ impl ExecutionVenue for PaperExecutionVenue {
             };
             drop(prices);
             let fill_qty = po.order.quantity;
-            let fee = fill_price * fill_qty
+            let fee = fill_price
+                * fill_qty
                 * (Amount::from_f64_retain(self.cfg.fee_rate_bps).unwrap_or_default()
                     / Amount::from(10_000));
             let execution = OrderStateMachine::apply_fill(
@@ -354,9 +357,7 @@ impl ExecutionVenue for PaperExecutionVenue {
             let status = po.order.status;
             let filled_qty = po.order.filled_quantity;
             let avg_price = po.order.avg_fill_price;
-            self.orders
-                .lock()
-                .insert(order.order_id, po);
+            self.orders.lock().insert(order.order_id, po);
             order.venue_order_id = venue_order_id.clone();
             order.status = status;
             order.filled_quantity = filled_qty;
@@ -374,11 +375,14 @@ impl ExecutionVenue for PaperExecutionVenue {
                 venue: self.venue,
                 ts: TimestampMs::now(),
             });
-            let _ = self.bus.execution().try_publish(ExecutionEvent::Acknowledged {
-                order_id: order.order_id,
-                venue: self.venue,
-                ts: TimestampMs::now(),
-            });
+            let _ = self
+                .bus
+                .execution()
+                .try_publish(ExecutionEvent::Acknowledged {
+                    order_id: order.order_id,
+                    venue: self.venue,
+                    ts: TimestampMs::now(),
+                });
         }
 
         let status = po.order.status;
@@ -401,11 +405,14 @@ impl ExecutionVenue for PaperExecutionVenue {
             return Err(VenueError::UnknownOrder(order_id));
         }
         if self.publish {
-            let _ = self.bus.execution().try_publish(ExecutionEvent::CancelRequested {
-                order_id,
-                venue: self.venue,
-                ts: TimestampMs::now(),
-            });
+            let _ = self
+                .bus
+                .execution()
+                .try_publish(ExecutionEvent::CancelRequested {
+                    order_id,
+                    venue: self.venue,
+                    ts: TimestampMs::now(),
+                });
         }
         po.order.status = OrderStatus::Cancelled;
         po.order.updated_at = TimestampMs::now();
@@ -496,9 +503,7 @@ mod tests {
     async fn market_order_fills_immediately() {
         let bus = Arc::new(EventBus::new());
         let venue = PaperExecutionVenue::with_seed(Exchange::Paper, cfg(), bus.clone(), 1, false)
-            .with_price_provider(Arc::new(|_| {
-                Some((dec!(99.0), dec!(101.0)))
-            }));
+            .with_price_provider(Arc::new(|_| Some((dec!(99.0), dec!(101.0)))));
         let mut o = Order::new(
             Exchange::Paper,
             Symbol("BTC-USDT".into()),
@@ -547,7 +552,10 @@ mod tests {
         );
         venue.place_order(&mut o).await.unwrap();
         venue.cancel_order(o.order_id).await.unwrap();
-        assert_eq!(venue.get_order_status(o.order_id).await.unwrap(), OrderStatus::Cancelled);
+        assert_eq!(
+            venue.get_order_status(o.order_id).await.unwrap(),
+            OrderStatus::Cancelled
+        );
         assert_eq!(venue.working_order_ids().len(), 0);
     }
 
@@ -568,11 +576,17 @@ mod tests {
             .report_fill(o.order_id, dec!(100.0), dec!(0.04), false)
             .await
             .unwrap();
-        assert_eq!(venue.get_order_status(o.order_id).await.unwrap(), OrderStatus::PartiallyFilled);
+        assert_eq!(
+            venue.get_order_status(o.order_id).await.unwrap(),
+            OrderStatus::PartiallyFilled
+        );
         venue
             .report_fill(o.order_id, dec!(100.0), dec!(0.06), false)
             .await
             .unwrap();
-        assert_eq!(venue.get_order_status(o.order_id).await.unwrap(), OrderStatus::Filled);
+        assert_eq!(
+            venue.get_order_status(o.order_id).await.unwrap(),
+            OrderStatus::Filled
+        );
     }
 }

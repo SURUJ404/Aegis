@@ -33,6 +33,9 @@ pub struct EngineConfig {
     pub api: ApiConfig,
     pub persistence: PersistenceConfig,
     pub market_data: MarketDataConfig,
+    /// Directory for engine state files (the order-log WAL lives at
+    /// `{data_dir}/wal.log`).
+    pub data_dir: String,
 }
 
 impl EngineConfig {
@@ -67,11 +70,17 @@ impl EngineConfig {
         if let Ok(v) = std::env::var("API_TOKEN") {
             self.api.token = (!v.is_empty()).then_some(v);
         }
+        if let Ok(v) = std::env::var("LQ_WEB_DIR") {
+            self.api.web_dir = v;
+        }
         if let Ok(v) = std::env::var("METRICS_BIND") {
             self.telemetry.metrics_bind = v;
         }
         if let Ok(v) = std::env::var("LQ_LOG_LEVEL") {
             self.telemetry.log_level = v;
+        }
+        if let Ok(v) = std::env::var("LQ_DATA_DIR") {
+            self.data_dir = v;
         }
     }
 }
@@ -89,6 +98,7 @@ impl Default for EngineConfig {
             api: ApiConfig::default(),
             persistence: PersistenceConfig::default(),
             market_data: MarketDataConfig::default(),
+            data_dir: "data".to_string(),
         }
     }
 }
@@ -249,6 +259,10 @@ pub struct ApiConfig {
     /// Optional bearer token for the control-plane HTTP API. When `Some`, every
     /// request must carry `Authorization: Bearer <token>`.
     pub token: Option<String>,
+    /// Directory holding the built dashboard (`web/dist`) that the API serves
+    /// next to its routes, so one origin hosts the UI and the control plane.
+    /// Empty string disables static serving.
+    pub web_dir: String,
 }
 
 impl Default for ApiConfig {
@@ -256,6 +270,7 @@ impl Default for ApiConfig {
         Self {
             bind: "0.0.0.0:8080".to_string(),
             token: None,
+            web_dir: "web/dist".to_string(),
         }
     }
 }
@@ -318,7 +333,10 @@ mod tests {
         "#;
         let cfg = EngineConfig::from_toml(toml).unwrap();
         assert_eq!(cfg.strategy.market_making.half_spread_bps, 8.0);
-        assert_eq!(cfg.strategy.market_making.quote_qty, rust_decimal_macros::dec!(0.05));
+        assert_eq!(
+            cfg.strategy.market_making.quote_qty,
+            rust_decimal_macros::dec!(0.05)
+        );
     }
 
     #[test]
@@ -357,5 +375,3 @@ mod tests {
         std::env::remove_var("LQ_PERSISTENCE_ENABLED");
     }
 }
-
-

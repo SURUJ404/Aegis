@@ -51,7 +51,11 @@ impl RiskEngine {
 
     fn record_reject(&self, code: RiskCode) {
         *self.rejects.lock() += 1;
-        *self.reject_reasons.lock().entry(code.as_str().to_string()).or_default() += 1;
+        *self
+            .reject_reasons
+            .lock()
+            .entry(code.as_str().to_string())
+            .or_default() += 1;
     }
 
     /// Engage or release the kill switch.
@@ -102,12 +106,18 @@ impl RiskEngine {
     /// "now" timestamp. The timestamp drives the sliding-window rate limiter
     /// only; all other checks are time-independent. Passing the market event
     /// timestamp in a backtest keeps the run byte-for-byte reproducible.
-    pub fn validate_order_at(&self, order: &Order, mark: Decimal, now: TimestampMs) -> RiskDecision {
+    pub fn validate_order_at(
+        &self,
+        order: &Order,
+        mark: Decimal,
+        now: TimestampMs,
+    ) -> RiskDecision {
         if self.kill_switch.load(AtomicOrdering::SeqCst) {
             self.record_reject(RiskCode::KillSwitchEngaged);
             return RiskDecision::Reject(RiskReason::new(
                 RiskCode::KillSwitchEngaged,
-                self.halt_reason().unwrap_or_else(|| "kill switch engaged".into()),
+                self.halt_reason()
+                    .unwrap_or_else(|| "kill switch engaged".into()),
             ));
         }
 
@@ -203,9 +213,7 @@ impl RiskEngine {
             .orders
             .iter()
             .filter(|o| {
-                o.venue == order.venue
-                    && o.symbol == order.symbol
-                    && !o.status.is_terminal()
+                o.venue == order.venue && o.symbol == order.symbol && !o.status.is_terminal()
             })
             .count();
         if open as u32 >= self.cfg.max_open_orders {
@@ -261,7 +269,11 @@ impl RiskEngine {
 
     fn rate_allowed(&self, now: TimestampMs) -> bool {
         let mut times = self.order_times.lock();
-        while times.front().map(|t| now.as_u64() - t.as_u64() >= 1000).unwrap_or(false) {
+        while times
+            .front()
+            .map(|t| now.as_u64() - t.as_u64() >= 1000)
+            .unwrap_or(false)
+        {
             times.pop_front();
         }
         if times.len() as f64 >= self.cfg.max_order_rate_per_sec {
@@ -275,7 +287,11 @@ impl RiskEngine {
     /// control API and backtest diagnostics to explain *why* orders are being
     /// rejected rather than just how many.
     pub fn reject_breakdown(&self) -> Vec<(String, u64)> {
-        self.reject_reasons.lock().iter().map(|(k, v)| (k.clone(), *v)).collect()
+        self.reject_reasons
+            .lock()
+            .iter()
+            .map(|(k, v)| (k.clone(), *v))
+            .collect()
     }
 }
 
@@ -429,4 +445,3 @@ mod tests {
         let _: Symbol = "ETH-USDT".parse().unwrap();
     }
 }
-

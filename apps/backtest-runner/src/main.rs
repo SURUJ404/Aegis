@@ -50,7 +50,8 @@ fn load_config(cli: &Cli) -> anyhow::Result<EngineConfig> {
     match &cli.config {
         Some(path) => {
             let text = std::fs::read_to_string(path)?;
-            EngineConfig::from_toml_with_env(&text).map_err(|e| anyhow::anyhow!("config parse error: {e}"))
+            EngineConfig::from_toml_with_env(&text)
+                .map_err(|e| anyhow::anyhow!("config parse error: {e}"))
         }
         None => Ok(EngineConfig::default()),
     }
@@ -58,7 +59,12 @@ fn load_config(cli: &Cli) -> anyhow::Result<EngineConfig> {
 
 /// Build the synthetic event sequence. Deterministic given `seed`.
 fn generate_events(seed: u64, count: u64, cfg: &EngineConfig) -> Vec<MarketEvent> {
-    let symbol = Symbol(cfg.symbols.first().cloned().unwrap_or_else(|| "BTC-USDT".into()));
+    let symbol = Symbol(
+        cfg.symbols
+            .first()
+            .cloned()
+            .unwrap_or_else(|| "BTC-USDT".into()),
+    );
     let spec = InstrumentSpec::new(dec!(0.1), dec!(0.01));
 
     let mut gen = SyntheticMarketData::new(
@@ -83,7 +89,12 @@ fn generate_events(seed: u64, count: u64, cfg: &EngineConfig) -> Vec<MarketEvent
 /// Translate the engine config into backtest parameters.
 fn backtest_config(cfg: &EngineConfig, seed: u64) -> BacktestConfig {
     let venue = cfg.venues.first().copied().unwrap_or(Exchange::Paper);
-    let symbol = Symbol(cfg.symbols.first().cloned().unwrap_or_else(|| "BTC-USDT".into()));
+    let symbol = Symbol(
+        cfg.symbols
+            .first()
+            .cloned()
+            .unwrap_or_else(|| "BTC-USDT".into()),
+    );
     BacktestConfig {
         venue,
         symbol,
@@ -115,7 +126,11 @@ fn print_summary(result: &BacktestResult) {
     println!("  win rate          : {:.2}%", m.win_rate * 100.0);
     println!("  fees total        : {}", m.fees_total);
     println!("  net pnl           : {}", m.net_pnl);
-    println!("  max drawdown      : {} ({:.2}%)", m.max_drawdown, m.max_drawdown_pct * 100.0);
+    println!(
+        "  max drawdown      : {} ({:.2}%)",
+        m.max_drawdown,
+        m.max_drawdown_pct * 100.0
+    );
     println!("  sharpe (annual)   : {:.2}", m.sharpe);
     println!("  final equity      : {}", m.final_equity);
 }
@@ -126,7 +141,11 @@ async fn main() -> anyhow::Result<()> {
     let cfg = load_config(&cli)?;
     lq_telemetry::init_logging(&cfg.telemetry)?;
 
-    tracing::info!(events = cli.events, seed = cli.seed, "generating synthetic market sequence");
+    tracing::info!(
+        events = cli.events,
+        seed = cli.seed,
+        "generating synthetic market sequence"
+    );
     let events = generate_events(cli.seed, cli.events, &cfg);
     tracing::info!(n = events.len(), "events generated");
 

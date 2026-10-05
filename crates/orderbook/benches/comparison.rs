@@ -1,12 +1,14 @@
 use std::hint::black_box;
 use std::time::Instant;
 
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, BenchmarkGroup};
+use criterion::{criterion_group, criterion_main, BenchmarkGroup, BenchmarkId, Criterion};
 use lq_core::models::{LevelChange, OrderBookDelta, OrderBookLevel, OrderBookSnapshot};
 use lq_exchange::spec::InstrumentSpec;
-use lq_orderbook::book_impls::{ArrayBackedBook, BTreeMapBook, HashMapSortedVecBook, OrderBookImpl};
-use lq_orderbook::book::OrderBook;
 use lq_orderbook::analytics::{AnalyticsConfig, MarketStateEngine};
+use lq_orderbook::book::OrderBook;
+use lq_orderbook::book_impls::{
+    ArrayBackedBook, BTreeMapBook, HashMapSortedVecBook, OrderBookImpl,
+};
 use lq_types::{Exchange, Side, Symbol, TimestampMs};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
@@ -67,7 +69,11 @@ fn delta(seq: u64, num_changes: usize) -> OrderBookDelta {
     }
 }
 
-fn bench_snapshot_apply<B: OrderBookImpl>(group: &mut BenchmarkGroup<criterion::measurement::WallTime>, name: &str, levels: usize) {
+fn bench_snapshot_apply<B: OrderBookImpl>(
+    group: &mut BenchmarkGroup<criterion::measurement::WallTime>,
+    name: &str,
+    levels: usize,
+) {
     let snap = snapshot(levels);
     group.bench_with_input(BenchmarkId::new(name, levels), &snap, |b, snap| {
         b.iter(|| {
@@ -78,7 +84,12 @@ fn bench_snapshot_apply<B: OrderBookImpl>(group: &mut BenchmarkGroup<criterion::
     });
 }
 
-fn bench_delta_apply<B: OrderBookImpl>(group: &mut BenchmarkGroup<criterion::measurement::WallTime>, name: &str, levels: usize, changes: usize) {
+fn bench_delta_apply<B: OrderBookImpl>(
+    group: &mut BenchmarkGroup<criterion::measurement::WallTime>,
+    name: &str,
+    levels: usize,
+    changes: usize,
+) {
     let snap = snapshot(levels);
     let mut book = B::new(VENUE, symbol(), spec());
     book.apply_snapshot(&snap);
@@ -94,7 +105,12 @@ fn bench_delta_apply<B: OrderBookImpl>(group: &mut BenchmarkGroup<criterion::mea
     );
 }
 
-fn bench_full_cycle<B: OrderBookImpl>(group: &mut BenchmarkGroup<criterion::measurement::WallTime>, name: &str, levels: usize, num_deltas: usize) {
+fn bench_full_cycle<B: OrderBookImpl>(
+    group: &mut BenchmarkGroup<criterion::measurement::WallTime>,
+    name: &str,
+    levels: usize,
+    num_deltas: usize,
+) {
     let snap = snapshot(levels);
     let deltas: Vec<OrderBookDelta> = (2..=num_deltas as u64 + 1).map(|i| delta(i, 4)).collect();
 
@@ -114,7 +130,11 @@ fn bench_full_cycle<B: OrderBookImpl>(group: &mut BenchmarkGroup<criterion::meas
     );
 }
 
-fn bench_analytics_compute(group: &mut BenchmarkGroup<criterion::measurement::WallTime>, name: &str, levels: usize) {
+fn bench_analytics_compute(
+    group: &mut BenchmarkGroup<criterion::measurement::WallTime>,
+    name: &str,
+    levels: usize,
+) {
     let snap = snapshot(levels);
     let mut book = OrderBook::new(VENUE, symbol(), spec());
     book.apply_snapshot(&snap);
@@ -131,7 +151,10 @@ fn bench_analytics_compute(group: &mut BenchmarkGroup<criterion::measurement::Wa
     );
 }
 
-fn bench_throughput<B: OrderBookImpl>(group: &mut BenchmarkGroup<criterion::measurement::WallTime>, name: &str) {
+fn bench_throughput<B: OrderBookImpl>(
+    group: &mut BenchmarkGroup<criterion::measurement::WallTime>,
+    name: &str,
+) {
     let levels = 100;
     let snap = snapshot(levels);
     let num_ops = 1_000_000;
@@ -176,7 +199,12 @@ pub fn bench_all_implementations(c: &mut Criterion) {
     for levels in [10, 50, 100, 200] {
         for changes in [1, 10, 50] {
             bench_delta_apply::<BTreeMapBook>(&mut group, "BTreeMapBook", levels, changes);
-            bench_delta_apply::<HashMapSortedVecBook>(&mut group, "HashMapSortedVecBook", levels, changes);
+            bench_delta_apply::<HashMapSortedVecBook>(
+                &mut group,
+                "HashMapSortedVecBook",
+                levels,
+                changes,
+            );
             bench_delta_apply::<ArrayBackedBook>(&mut group, "ArrayBackedBook", levels, changes);
         }
     }

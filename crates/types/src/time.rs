@@ -6,7 +6,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Milliseconds since the Unix epoch (wall clock). Used for persistence, logs and
 /// cross-venue comparison where a shared clock is required.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize,
+)]
 #[serde(transparent)]
 pub struct TimestampMs(pub u64);
 

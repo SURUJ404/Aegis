@@ -63,11 +63,7 @@ impl RedisHotState {
     }
 
     /// Increment the working-order count for a venue by `delta`.
-    pub async fn adjust_open_orders(
-        &mut self,
-        venue: &str,
-        delta: i64,
-    ) -> Result<i64, StoreError> {
+    pub async fn adjust_open_orders(&mut self, venue: &str, delta: i64) -> Result<i64, StoreError> {
         let n: i64 = redis::cmd("INCRBY")
             .arg(format!("lq:open_orders:{venue}"))
             .arg(delta)

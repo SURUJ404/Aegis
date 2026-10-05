@@ -7,20 +7,18 @@
 //! topic. This is the smallest control plane for inspecting state and driving
 //! control flows without running an engine.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use clap::Parser;
+use lq_api::ApiState;
 use lq_core::bus::EventBus;
 use lq_core::config::EngineConfig;
 use lq_core::event::ControlEvent;
 use lq_core::state::EngineState;
-use lq_api::ApiState;
 
 #[derive(Parser)]
-#[command(
-    name = "api-server",
-    about = "Standalone control-plane API server"
-)]
+#[command(name = "api-server", about = "Standalone control-plane API server")]
 struct Cli {
     /// Path to a TOML config file. Defaults to built-in defaults.
     #[arg(long, env = "LQ_CONFIG")]
@@ -36,7 +34,8 @@ fn load_config(cli: &Cli) -> anyhow::Result<EngineConfig> {
     match &cli.config {
         Some(path) => {
             let text = std::fs::read_to_string(path)?;
-            EngineConfig::from_toml_with_env(&text).map_err(|e| anyhow::anyhow!("config parse error: {e}"))
+            EngineConfig::from_toml_with_env(&text)
+                .map_err(|e| anyhow::anyhow!("config parse error: {e}"))
         }
         None => Ok(EngineConfig::default()),
     }
@@ -79,9 +78,22 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
-    // Control-plane API.
+    // Control-plane API + the built dashboard (web/dist).
     let api_bind = cli.bind.clone().unwrap_or_else(|| cfg.api.bind.clone());
-    let app = lq_api::build_router(ApiState::new(state, Arc::clone(&bus)));
+    let mut api = ApiState::new(state, Arc::clone(&bus));
+    let web_dir = PathBuf::from(&cfg.api.web_dir);
+    if cfg.api.web_dir.is_empty() {
+        tracing::info!("dashboard: static serving disabled (api.web_dir empty)");
+    } else if web_dir.join("index.html").is_file() {
+        tracing::info!(dir = %web_dir.display(), "dashboard: serving built assets");
+        api = api.with_web(web_dir);
+    } else {
+        tracing::warn!(
+            dir = %web_dir.display(),
+            "dashboard: index.html missing; serving the API only (run `npm run build` in web/)"
+        );
+    }
+    let app = lq_api::build_router(api);
     let listener = tokio::net::TcpListener::bind(&api_bind).await?;
     tracing::info!(bind = %api_bind, "api server listening");
     axum::serve(listener, app).await?;

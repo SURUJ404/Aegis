@@ -67,10 +67,12 @@ impl OrderBookImpl for BTreeMapBook {
         self.bids.clear();
         self.asks.clear();
         for level in &snap.bids {
-            self.bids.insert(self.spec.to_ticks(level.price), qty_to_u64(level.qty));
+            self.bids
+                .insert(self.spec.to_ticks(level.price), qty_to_u64(level.qty));
         }
         for level in &snap.asks {
-            self.asks.insert(self.spec.to_ticks(level.price), qty_to_u64(level.qty));
+            self.asks
+                .insert(self.spec.to_ticks(level.price), qty_to_u64(level.qty));
         }
         self.sequence = snap.sequence;
         self.last_event_ts = snap.event_ts;
@@ -88,13 +90,19 @@ impl OrderBookImpl for BTreeMapBook {
                     .changes
                     .iter()
                     .filter(|c| c.side == Side::Bid)
-                    .map(|c| OrderBookLevel { price: c.price, qty: c.qty })
+                    .map(|c| OrderBookLevel {
+                        price: c.price,
+                        qty: c.qty,
+                    })
                     .collect(),
                 asks: delta
                     .changes
                     .iter()
                     .filter(|c| c.side == Side::Ask)
-                    .map(|c| OrderBookLevel { price: c.price, qty: c.qty })
+                    .map(|c| OrderBookLevel {
+                        price: c.price,
+                        qty: c.qty,
+                    })
                     .collect(),
             });
             return DeltaOutcome::Applied;
@@ -132,7 +140,10 @@ impl OrderBookImpl for BTreeMapBook {
     }
 
     fn best_bid(&self) -> Option<Price> {
-        self.bids.keys().next_back().map(|t| self.spec.from_ticks(*t))
+        self.bids
+            .keys()
+            .next_back()
+            .map(|t| self.spec.from_ticks(*t))
     }
 
     fn best_ask(&self) -> Option<Price> {
@@ -286,13 +297,19 @@ impl OrderBookImpl for HashMapSortedVecBook {
                     .changes
                     .iter()
                     .filter(|c| c.side == Side::Bid)
-                    .map(|c| OrderBookLevel { price: c.price, qty: c.qty })
+                    .map(|c| OrderBookLevel {
+                        price: c.price,
+                        qty: c.qty,
+                    })
                     .collect(),
                 asks: delta
                     .changes
                     .iter()
                     .filter(|c| c.side == Side::Ask)
-                    .map(|c| OrderBookLevel { price: c.price, qty: c.qty })
+                    .map(|c| OrderBookLevel {
+                        price: c.price,
+                        qty: c.qty,
+                    })
                     .collect(),
             });
             return DeltaOutcome::Applied;
@@ -530,13 +547,19 @@ impl OrderBookImpl for ArrayBackedBook {
                     .changes
                     .iter()
                     .filter(|c| c.side == Side::Bid)
-                    .map(|c| OrderBookLevel { price: c.price, qty: c.qty })
+                    .map(|c| OrderBookLevel {
+                        price: c.price,
+                        qty: c.qty,
+                    })
                     .collect(),
                 asks: delta
                     .changes
                     .iter()
                     .filter(|c| c.side == Side::Ask)
-                    .map(|c| OrderBookLevel { price: c.price, qty: c.qty })
+                    .map(|c| OrderBookLevel {
+                        price: c.price,
+                        qty: c.qty,
+                    })
                     .collect(),
             });
             return DeltaOutcome::Applied;
@@ -596,14 +619,20 @@ impl OrderBookImpl for ArrayBackedBook {
         if !self.initialized || self.bid_max_idx == 0 && self.bid_array[self.bid_max_idx] == 0 {
             for i in (self.bid_min_idx..=self.bid_max_idx).rev() {
                 if self.bid_array[i] > 0 {
-                    return Some(self.spec.from_ticks((self.base_price_tick + i as u64) as PriceTick));
+                    return Some(
+                        self.spec
+                            .from_ticks((self.base_price_tick + i as u64) as PriceTick),
+                    );
                 }
             }
             return None;
         }
         for i in (self.bid_min_idx..=self.bid_max_idx).rev() {
             if self.bid_array[i] > 0 {
-                return Some(self.spec.from_ticks((self.base_price_tick + i as u64) as PriceTick));
+                return Some(
+                    self.spec
+                        .from_ticks((self.base_price_tick + i as u64) as PriceTick),
+                );
             }
         }
         None
@@ -615,7 +644,10 @@ impl OrderBookImpl for ArrayBackedBook {
         }
         for i in self.ask_min_idx..=self.ask_max_idx {
             if self.ask_array[i] > 0 {
-                return Some(self.spec.from_ticks((self.base_price_tick + i as u64) as PriceTick));
+                return Some(
+                    self.spec
+                        .from_ticks((self.base_price_tick + i as u64) as PriceTick),
+                );
             }
         }
         None
@@ -719,7 +751,9 @@ impl OrderBookImpl for ArrayBackedBook {
     }
 
     fn is_empty(&self) -> bool {
-        !self.initialized || self.bid_min_idx > self.bid_max_idx || self.ask_min_idx > self.ask_max_idx
+        !self.initialized
+            || self.bid_min_idx > self.bid_max_idx
+            || self.ask_min_idx > self.ask_max_idx
     }
 }
 
@@ -741,12 +775,24 @@ mod tests {
             event_ts: TimestampMs(1),
             exchange_ts: TimestampMs(1),
             bids: vec![
-                OrderBookLevel { price: dec!(100.0), qty: dec!(1.0) },
-                OrderBookLevel { price: dec!(99.9), qty: dec!(2.0) },
+                OrderBookLevel {
+                    price: dec!(100.0),
+                    qty: dec!(1.0),
+                },
+                OrderBookLevel {
+                    price: dec!(99.9),
+                    qty: dec!(2.0),
+                },
             ],
             asks: vec![
-                OrderBookLevel { price: dec!(100.1), qty: dec!(1.5) },
-                OrderBookLevel { price: dec!(100.2), qty: dec!(0.5) },
+                OrderBookLevel {
+                    price: dec!(100.1),
+                    qty: dec!(1.5),
+                },
+                OrderBookLevel {
+                    price: dec!(100.2),
+                    qty: dec!(0.5),
+                },
             ],
         }
     }
@@ -772,7 +818,11 @@ mod tests {
 
         let out = b.apply_delta(&delta(
             101,
-            vec![LevelChange { side: Side::Bid, price: dec!(100.0), qty: dec!(0.0) }],
+            vec![LevelChange {
+                side: Side::Bid,
+                price: dec!(100.0),
+                qty: dec!(0.0),
+            }],
         ));
         assert_eq!(out, DeltaOutcome::Applied);
         assert_eq!(b.best_bid(), Some(dec!(99.9)));
@@ -803,8 +853,10 @@ mod tests {
 
         let mut rng = StdRng::seed_from_u64(42);
         let mut btree = BTreeMapBook::new(Exchange::Paper, Symbol("BTC-USDT".into()), test_spec());
-        let mut hashvec = HashMapSortedVecBook::new(Exchange::Paper, Symbol("BTC-USDT".into()), test_spec());
-        let mut array = ArrayBackedBook::new(Exchange::Paper, Symbol("BTC-USDT".into()), test_spec());
+        let mut hashvec =
+            HashMapSortedVecBook::new(Exchange::Paper, Symbol("BTC-USDT".into()), test_spec());
+        let mut array =
+            ArrayBackedBook::new(Exchange::Paper, Symbol("BTC-USDT".into()), test_spec());
 
         let snap = snapshot();
         btree.apply_snapshot(&snap);
@@ -816,7 +868,11 @@ mod tests {
                 LevelChange {
                     side: if rng.gen() { Side::Bid } else { Side::Ask },
                     price: dec!(100.0) + Decimal::from(rng.gen_range(0..20)) * dec!(0.1),
-                    qty: if rng.gen() { Decimal::ZERO } else { Decimal::from(rng.gen_range(1..100)) / Decimal::from(100) },
+                    qty: if rng.gen() {
+                        Decimal::ZERO
+                    } else {
+                        Decimal::from(rng.gen_range(1..100)) / Decimal::from(100)
+                    },
                 };
                 5
             ];

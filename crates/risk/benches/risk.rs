@@ -23,14 +23,28 @@ pub fn bench_risk(c: &mut Criterion) {
 
     group.bench_function("validate_order/limit", |b| {
         b.iter(|| {
-            let order = Order::new(VENUE, symbol(), Side::Bid, OrderType::Limit, Some(dec!(100.0)), dec!(0.01));
+            let order = Order::new(
+                VENUE,
+                symbol(),
+                Side::Bid,
+                OrderType::Limit,
+                Some(dec!(100.0)),
+                dec!(0.01),
+            );
             black_box(risk.validate_order(&order, dec!(100.0)));
         });
     });
 
     group.bench_function("validate_order/market", |b| {
         b.iter(|| {
-            let order = Order::new(VENUE, symbol(), Side::Ask, OrderType::Market, None, dec!(0.02));
+            let order = Order::new(
+                VENUE,
+                symbol(),
+                Side::Ask,
+                OrderType::Market,
+                None,
+                dec!(0.02),
+            );
             black_box(risk.validate_order(&order, dec!(100.0)));
         });
     });

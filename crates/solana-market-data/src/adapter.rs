@@ -5,8 +5,8 @@ use std::sync::Arc;
 use tokio::task::JoinHandle;
 
 use crate::{
-    GeyserConfig, GeyserEventSource, LogsSubscribeClient, RpcConfig, RpcSnapshotClient,
-    SolanaMarket, SolanaProtocol, run_solana_feed, SolanaWsConfig,
+    run_solana_feed, GeyserConfig, GeyserEventSource, LogsSubscribeClient, RpcConfig,
+    RpcSnapshotClient, SolanaMarket, SolanaProtocol, SolanaWsConfig,
 };
 
 /// Configuration for a Solana market data feed
@@ -114,7 +114,14 @@ impl SolanaMarketDataBuilder {
         Self { feeds: Vec::new() }
     }
 
-    pub fn add_raydium_clmm(mut self, symbol: Symbol, pool_address: String, geyser: Option<GeyserConfig>, ws: Option<SolanaWsConfig>, rpc: Option<RpcConfig>) -> Self {
+    pub fn add_raydium_clmm(
+        mut self,
+        symbol: Symbol,
+        pool_address: String,
+        geyser: Option<GeyserConfig>,
+        ws: Option<SolanaWsConfig>,
+        rpc: Option<RpcConfig>,
+    ) -> Self {
         self.feeds.push(SolanaFeedConfig {
             market: SolanaMarket::new(SolanaProtocol::RaydiumClmm, symbol, pool_address),
             geyser,
@@ -125,7 +132,14 @@ impl SolanaMarketDataBuilder {
         self
     }
 
-    pub fn add_orca_whirlpool(mut self, symbol: Symbol, pool_address: String, geyser: Option<GeyserConfig>, ws: Option<SolanaWsConfig>, rpc: Option<RpcConfig>) -> Self {
+    pub fn add_orca_whirlpool(
+        mut self,
+        symbol: Symbol,
+        pool_address: String,
+        geyser: Option<GeyserConfig>,
+        ws: Option<SolanaWsConfig>,
+        rpc: Option<RpcConfig>,
+    ) -> Self {
         self.feeds.push(SolanaFeedConfig {
             market: SolanaMarket::new(SolanaProtocol::OrcaWhirlpools, symbol, pool_address),
             geyser,
@@ -136,7 +150,14 @@ impl SolanaMarketDataBuilder {
         self
     }
 
-    pub fn add_phoenix(mut self, symbol: Symbol, pool_address: String, geyser: Option<GeyserConfig>, ws: Option<SolanaWsConfig>, rpc: Option<RpcConfig>) -> Self {
+    pub fn add_phoenix(
+        mut self,
+        symbol: Symbol,
+        pool_address: String,
+        geyser: Option<GeyserConfig>,
+        ws: Option<SolanaWsConfig>,
+        rpc: Option<RpcConfig>,
+    ) -> Self {
         self.feeds.push(SolanaFeedConfig {
             market: SolanaMarket::new(SolanaProtocol::Phoenix, symbol, pool_address),
             geyser,
@@ -147,7 +168,14 @@ impl SolanaMarketDataBuilder {
         self
     }
 
-    pub fn add_openbook(mut self, symbol: Symbol, pool_address: String, geyser: Option<GeyserConfig>, ws: Option<SolanaWsConfig>, rpc: Option<RpcConfig>) -> Self {
+    pub fn add_openbook(
+        mut self,
+        symbol: Symbol,
+        pool_address: String,
+        geyser: Option<GeyserConfig>,
+        ws: Option<SolanaWsConfig>,
+        rpc: Option<RpcConfig>,
+    ) -> Self {
         self.feeds.push(SolanaFeedConfig {
             market: SolanaMarket::new(SolanaProtocol::OpenBook, symbol, pool_address),
             geyser,
@@ -182,15 +210,17 @@ mod tests {
 
     #[test]
     fn builder_creates_feeds() {
-        let builder = SolanaMarketDataBuilder::new()
-            .add_raydium_clmm(
-                Symbol("SOL-USDC".into()),
-                "58oQChx4yWmvKdwLLZzBi4Cho6c2f4d5Pw2E8Z3E8Z3E".into(),
-                None,
-                None,
-                None,
-            );
+        let builder = SolanaMarketDataBuilder::new().add_raydium_clmm(
+            Symbol("SOL-USDC".into()),
+            "58oQChx4yWmvKdwLLZzBi4Cho6c2f4d5Pw2E8Z3E8Z3E".into(),
+            None,
+            None,
+            None,
+        );
         assert_eq!(builder.feeds.len(), 1);
-        assert_eq!(builder.feeds[0].market.protocol, SolanaProtocol::RaydiumClmm);
+        assert_eq!(
+            builder.feeds[0].market.protocol,
+            SolanaProtocol::RaydiumClmm
+        );
     }
 }

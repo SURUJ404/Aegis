@@ -61,5 +61,10 @@ pub fn payload_from_aggregation(
         Aggregation::Fresh { sources, .. } => *sources,
         _ => return None,
     };
-    Some(price_payload(price, observation_ts_ms, sources, override_band))
+    Some(price_payload(
+        price,
+        observation_ts_ms,
+        sources,
+        override_band,
+    ))
 }

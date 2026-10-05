@@ -5,8 +5,8 @@ use solana_sdk::pubkey::Pubkey;
 use std::sync::Mutex;
 
 use crate::models::{
-    NormalizedSolanaEvent, SolanaEventMetadata, SolanaEventPayload,
-    SolanaEventType, SolanaMarket, SolanaProtocol, OrderBookLevelData,
+    NormalizedSolanaEvent, OrderBookLevelData, SolanaEventMetadata, SolanaEventPayload,
+    SolanaEventType, SolanaMarket, SolanaProtocol,
 };
 
 /// Decodes Solana account/data changes into normalized events
@@ -37,10 +37,18 @@ impl SolanaEventDecoder {
         *self.sequence.lock().unwrap() += 1;
 
         match self.market.protocol {
-            SolanaProtocol::RaydiumClmm => self.decode_raydium_clmm(slot, signature, account_data, program_id),
-            SolanaProtocol::OrcaWhirlpools => self.decode_orca_whirlpool(slot, signature, account_data, program_id),
-            SolanaProtocol::Phoenix => self.decode_phoenix(slot, signature, account_data, program_id),
-            SolanaProtocol::OpenBook => self.decode_openbook(slot, signature, account_data, program_id),
+            SolanaProtocol::RaydiumClmm => {
+                self.decode_raydium_clmm(slot, signature, account_data, program_id)
+            }
+            SolanaProtocol::OrcaWhirlpools => {
+                self.decode_orca_whirlpool(slot, signature, account_data, program_id)
+            }
+            SolanaProtocol::Phoenix => {
+                self.decode_phoenix(slot, signature, account_data, program_id)
+            }
+            SolanaProtocol::OpenBook => {
+                self.decode_openbook(slot, signature, account_data, program_id)
+            }
             _ => Ok(None),
         }
     }
@@ -144,9 +152,7 @@ impl SolanaEventDecoder {
             metadata: self.metadata(slot, signature, program_id),
             market: self.market.clone(),
             event_type: SolanaEventType::OrderBookDelta,
-            payload: SolanaEventPayload::OrderBookDelta {
-                changes: vec![],
-            },
+            payload: SolanaEventPayload::OrderBookDelta { changes: vec![] },
         }))
     }
 
@@ -162,13 +168,16 @@ impl SolanaEventDecoder {
             metadata: self.metadata(slot, signature, program_id),
             market: self.market.clone(),
             event_type: SolanaEventType::OrderBookDelta,
-            payload: SolanaEventPayload::OrderBookDelta {
-                changes: vec![],
-            },
+            payload: SolanaEventPayload::OrderBookDelta { changes: vec![] },
         }))
     }
 
-    fn parse_swap_log(&self, slot: u64, signature: &str, log: &str) -> Result<Option<NormalizedSolanaEvent>> {
+    fn parse_swap_log(
+        &self,
+        slot: u64,
+        signature: &str,
+        log: &str,
+    ) -> Result<Option<NormalizedSolanaEvent>> {
         // Parse Raydium/Orca swap logs
         // Example: "Program log: Swap: amount_in=1000000 amount_out=950000"
         let meta = self.metadata(slot, signature, &self.market.pool_address.parse().unwrap());
@@ -220,8 +229,15 @@ pub fn ticks_to_levels(
 ) -> (Vec<OrderBookLevelData>, Vec<OrderBookLevelData>) {
     // Convert sqrt_price_x64 to price
     // This is a placeholder - real implementation would parse tick arrays
-    let price = Decimal::from_str_exact(&format!("{}", sqrt_price_x64 as f64 / 2_f64.powi(64))).unwrap_or(Decimal::ZERO);
-    let bids = vec![OrderBookLevelData { price, qty: Decimal::from(1) }];
-    let asks = vec![OrderBookLevelData { price: price * Decimal::from(10001) / Decimal::from(10000), qty: Decimal::from(1) }];
+    let price = Decimal::from_str_exact(&format!("{}", sqrt_price_x64 as f64 / 2_f64.powi(64)))
+        .unwrap_or(Decimal::ZERO);
+    let bids = vec![OrderBookLevelData {
+        price,
+        qty: Decimal::from(1),
+    }];
+    let asks = vec![OrderBookLevelData {
+        price: price * Decimal::from(10001) / Decimal::from(10000),
+        qty: Decimal::from(1),
+    }];
     (bids, asks)
 }

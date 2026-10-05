@@ -6,7 +6,7 @@
 //! - `oracle_gate` — pre-trade circuit-breaker lookup
 
 use criterion::{criterion_group, criterion_main, Criterion};
-use lq_oracle::{aggregate, AggregateConfig, OracleBook, Observation};
+use lq_oracle::{aggregate, AggregateConfig, Observation, OracleBook};
 use lq_sequencer::entry::{MarketId, OraclePriceCmd};
 use lq_types::{Exchange, Symbol};
 use rust_decimal::Decimal;

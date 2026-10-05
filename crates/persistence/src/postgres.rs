@@ -14,10 +14,7 @@ pub struct PostgresStore {
 impl PostgresStore {
     /// Connect to the database.
     pub async fn connect(url: &str) -> Result<Self, StoreError> {
-        let pool = PgPoolOptions::new()
-            .max_connections(5)
-            .connect(url)
-            .await?;
+        let pool = PgPoolOptions::new().max_connections(5).connect(url).await?;
         Ok(Self { pool })
     }
 
@@ -96,7 +93,12 @@ impl MarketDataStore for PostgresStore {
                 t.event_ts.as_u64() as i64,
                 serde_json::to_string(t)?,
             ),
-            MarketEvent::Status { venue, symbol, status, ts } => {
+            MarketEvent::Status {
+                venue,
+                symbol,
+                status,
+                ts,
+            } => {
                 let payload = serde_json::json!({
                     "venue": venue,
                     "symbol": symbol.as_str(),

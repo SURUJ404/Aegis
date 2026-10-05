@@ -43,7 +43,8 @@ impl EventRecorder {
     /// Record a market event, compute its checksum, and append.
     pub fn record(&mut self, event: &MarketEvent) {
         let event_checksum = checksum_event(event);
-        self.running_checksum = self.running_checksum
+        self.running_checksum = self
+            .running_checksum
             .wrapping_mul(0x517cc1b727220a95)
             .wrapping_add(event_checksum);
 
@@ -115,7 +116,9 @@ impl EventReplay {
             }
 
             let event_checksum = checksum_event(&recorded.event);
-            checksum = checksum.wrapping_mul(0x517cc1b727220a95).wrapping_add(event_checksum);
+            checksum = checksum
+                .wrapping_mul(0x517cc1b727220a95)
+                .wrapping_add(event_checksum);
         }
 
         ReplayResult {
@@ -214,12 +217,24 @@ mod tests {
             event_ts: TimestampMs(1700000000000),
             exchange_ts: TimestampMs(1700000000000),
             bids: vec![
-                OrderBookLevel { price: Price::from(99), qty: Qty::from(10) },
-                OrderBookLevel { price: Price::from(98), qty: Qty::from(20) },
+                OrderBookLevel {
+                    price: Price::from(99),
+                    qty: Qty::from(10),
+                },
+                OrderBookLevel {
+                    price: Price::from(98),
+                    qty: Qty::from(20),
+                },
             ],
             asks: vec![
-                OrderBookLevel { price: Price::from(101), qty: Qty::from(10) },
-                OrderBookLevel { price: Price::from(102), qty: Qty::from(20) },
+                OrderBookLevel {
+                    price: Price::from(101),
+                    qty: Qty::from(10),
+                },
+                OrderBookLevel {
+                    price: Price::from(102),
+                    qty: Qty::from(20),
+                },
             ],
         })
     }
@@ -231,7 +246,11 @@ mod tests {
             sequence: seq,
             event_ts: TimestampMs(1700000000000),
             exchange_ts: TimestampMs(1700000000000),
-            changes: vec![LevelChange { side: Side::Bid, price, qty }],
+            changes: vec![LevelChange {
+                side: Side::Bid,
+                price,
+                qty,
+            }],
             clear: false,
         })
     }
@@ -241,7 +260,11 @@ mod tests {
         let mut recorder = EventRecorder::new();
         recorder.record(&make_snapshot(1));
         for i in 2..=11 {
-            recorder.record(&make_delta(i, Price::from(99 - (i as i64 - 2)), Qty::from(5)));
+            recorder.record(&make_delta(
+                i,
+                Price::from(99 - (i as i64 - 2)),
+                Qty::from(5),
+            ));
         }
         let checksum1 = recorder.checksum();
         assert!(checksum1 != 0);
@@ -253,7 +276,11 @@ mod tests {
         let mut recorder2 = EventRecorder::new();
         recorder2.record(&make_snapshot(1));
         for i in 2..=11 {
-            recorder2.record(&make_delta(i, Price::from(99 - (i as i64 - 2)), Qty::from(5)));
+            recorder2.record(&make_delta(
+                i,
+                Price::from(99 - (i as i64 - 2)),
+                Qty::from(5),
+            ));
         }
         assert_eq!(checksum1, recorder2.checksum());
     }
@@ -274,8 +301,18 @@ mod tests {
     #[test]
     fn replay_detects_gaps() {
         let events = vec![
-            RecordedEvent { seq: 1, event: make_snapshot(1), checksum: 0, timestamp_ms: 0 },
-            RecordedEvent { seq: 5, event: make_delta(5, Price::from(99), Qty::from(5)), checksum: 0, timestamp_ms: 0 },
+            RecordedEvent {
+                seq: 1,
+                event: make_snapshot(1),
+                checksum: 0,
+                timestamp_ms: 0,
+            },
+            RecordedEvent {
+                seq: 5,
+                event: make_delta(5, Price::from(99), Qty::from(5)),
+                checksum: 0,
+                timestamp_ms: 0,
+            },
         ];
         let result = EventReplay::replay(&events);
         assert_eq!(result.gaps_detected, 1);

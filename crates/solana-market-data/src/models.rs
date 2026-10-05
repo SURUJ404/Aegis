@@ -104,7 +104,9 @@ pub struct NormalizedSolanaEvent {
 
 impl NormalizedSolanaEvent {
     pub fn to_market_event(self, venue: Exchange) -> lq_core::event::MarketEvent {
-        use lq_core::models::{LevelChange, MarketTick, OrderBookDelta, OrderBookLevel, OrderBookSnapshot, Trade};
+        use lq_core::models::{
+            LevelChange, MarketTick, OrderBookDelta, OrderBookLevel, OrderBookSnapshot, Trade,
+        };
 
         let event_ts = self.metadata.receive_ts;
         let exchange_ts = self.metadata.source_ts.unwrap_or(event_ts);
@@ -118,47 +120,52 @@ impl NormalizedSolanaEvent {
                     sequence: self.metadata.sequence,
                     event_ts,
                     exchange_ts,
-                    bids: bids.into_iter().map(|l| OrderBookLevel::new(l.price, l.qty)).collect(),
-                    asks: asks.into_iter().map(|l| OrderBookLevel::new(l.price, l.qty)).collect(),
+                    bids: bids
+                        .into_iter()
+                        .map(|l| OrderBookLevel::new(l.price, l.qty))
+                        .collect(),
+                    asks: asks
+                        .into_iter()
+                        .map(|l| OrderBookLevel::new(l.price, l.qty))
+                        .collect(),
                 })
             }
-            SolanaEventPayload::OrderBookDelta { changes } => {
-                MarketEvent::Delta(OrderBookDelta {
-                    venue,
-                    symbol,
-                    sequence: self.metadata.sequence,
-                    event_ts,
-                    exchange_ts,
-                    changes: changes.into_iter().map(|c| LevelChange {
+            SolanaEventPayload::OrderBookDelta { changes } => MarketEvent::Delta(OrderBookDelta {
+                venue,
+                symbol,
+                sequence: self.metadata.sequence,
+                event_ts,
+                exchange_ts,
+                changes: changes
+                    .into_iter()
+                    .map(|c| LevelChange {
                         side: c.side,
                         price: c.price,
                         qty: c.qty,
-                    }).collect(),
-                    clear: false,
-                })
-            }
-            SolanaEventPayload::Trade { price, qty, side } => {
-                MarketEvent::Trade(Trade {
-                    venue,
-                    symbol,
-                    price,
-                    qty,
-                    aggressor: side,
-                    event_ts,
-                    exchange_ts,
-                })
-            }
-            SolanaEventPayload::Swap { price, qty, side, .. } => {
-                MarketEvent::Trade(Trade {
-                    venue,
-                    symbol,
-                    price,
-                    qty,
-                    aggressor: side,
-                    event_ts,
-                    exchange_ts,
-                })
-            }
+                    })
+                    .collect(),
+                clear: false,
+            }),
+            SolanaEventPayload::Trade { price, qty, side } => MarketEvent::Trade(Trade {
+                venue,
+                symbol,
+                price,
+                qty,
+                aggressor: side,
+                event_ts,
+                exchange_ts,
+            }),
+            SolanaEventPayload::Swap {
+                price, qty, side, ..
+            } => MarketEvent::Trade(Trade {
+                venue,
+                symbol,
+                price,
+                qty,
+                aggressor: side,
+                event_ts,
+                exchange_ts,
+            }),
             SolanaEventPayload::LiquidityChange { .. } => {
                 // Emit as tick for now - liquidity changes affect depth
                 MarketEvent::Tick(MarketTick {
@@ -171,25 +178,26 @@ impl NormalizedSolanaEvent {
                     event_ts,
                 })
             }
-            SolanaEventPayload::Tick { price, qty, best_bid, best_ask } => {
-                MarketEvent::Tick(MarketTick {
-                    venue,
-                    symbol,
-                    last_price: price,
-                    last_qty: qty,
-                    best_bid,
-                    best_ask,
-                    event_ts,
-                })
-            }
-            SolanaEventPayload::Status { status } => {
-                MarketEvent::Status {
-                    venue,
-                    symbol,
-                    status: status.into(),
-                    ts: event_ts,
-                }
-            }
+            SolanaEventPayload::Tick {
+                price,
+                qty,
+                best_bid,
+                best_ask,
+            } => MarketEvent::Tick(MarketTick {
+                venue,
+                symbol,
+                last_price: price,
+                last_qty: qty,
+                best_bid,
+                best_ask,
+                event_ts,
+            }),
+            SolanaEventPayload::Status { status } => MarketEvent::Status {
+                venue,
+                symbol,
+                status: status.into(),
+                ts: event_ts,
+            },
         }
     }
 }

@@ -1,6 +1,8 @@
 //! Order model.
 
-use lq_types::{Exchange, OrderStatus, OrderType, Price, Qty, Side, Symbol, TimeInForce, TimestampMs};
+use lq_types::{
+    Exchange, OrderStatus, OrderType, Price, Qty, Side, Symbol, TimeInForce, TimestampMs,
+};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 

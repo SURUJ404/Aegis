@@ -102,13 +102,7 @@ fn stale_observations_are_filtered() {
         obs(Exchange::Bybit, dec!(100), 1_000),
     ];
     let agg = aggregate(&obs, &cfg(), 10_000);
-    assert_eq!(
-        agg,
-        Aggregation::InsufficientSources {
-            fresh: 2,
-            total: 3
-        }
-    );
+    assert_eq!(agg, Aggregation::InsufficientSources { fresh: 2, total: 3 });
 }
 
 #[test]
@@ -119,13 +113,7 @@ fn future_observations_are_filtered() {
         obs(Exchange::Bybit, dec!(100), 99_000), // from the future
     ];
     let agg = aggregate(&obs, &cfg(), 2_500);
-    assert_eq!(
-        agg,
-        Aggregation::InsufficientSources {
-            fresh: 2,
-            total: 3
-        }
-    );
+    assert_eq!(agg, Aggregation::InsufficientSources { fresh: 2, total: 3 });
 }
 
 #[test]
@@ -136,19 +124,16 @@ fn non_positive_prices_are_filtered() {
         obs(Exchange::Bybit, dec!(-5), 1_000),
     ];
     let agg = aggregate(&obs, &cfg(), 1_500);
-    assert_eq!(
-        agg,
-        Aggregation::InsufficientSources {
-            fresh: 1,
-            total: 3
-        }
-    );
+    assert_eq!(agg, Aggregation::InsufficientSources { fresh: 1, total: 3 });
 }
 
 #[test]
 fn consensus_lost_when_outliers_break_quorum() {
     // Two sources that are each other's outlier: no honest median exists.
-    let obs = vec![obs(Exchange::Okx, dec!(100), 1_000), obs(Exchange::Bybit, dec!(200), 1_000)];
+    let obs = vec![
+        obs(Exchange::Okx, dec!(100), 1_000),
+        obs(Exchange::Bybit, dec!(200), 1_000),
+    ];
     let cfg = AggregateConfig {
         min_sources: 2,
         ..cfg()
@@ -161,7 +146,7 @@ fn consensus_lost_when_outliers_break_quorum() {
 #[test]
 fn duplicate_venues_deduplicate_to_newest() {
     let obs = vec![
-        obs(Exchange::Okx, dec!(90), 500),   // older, must lose
+        obs(Exchange::Okx, dec!(90), 500),    // older, must lose
         obs(Exchange::Okx, dec!(101), 1_000), // newest per venue
         obs(Exchange::Binance, dec!(101), 1_000),
         obs(Exchange::Bybit, dec!(101), 1_000),
@@ -325,10 +310,7 @@ fn on_market_event_ingests_feed_events() {
     });
     assert!(book.on_market_event(&m, &tick));
     assert_eq!(book.venue_count(&m), 1);
-    assert!(book
-        .observations(&m)
-        .iter()
-        .any(|o| o.price == dec!(100)));
+    assert!(book.observations(&m).iter().any(|o| o.price == dec!(100)));
 }
 
 // ---- property tests ----
@@ -345,17 +327,12 @@ mod props {
             Just(Exchange::Paper),
             Just(Exchange::Simulated),
         ];
-        (
+        (venue, -500_000i64..500_000, 0u64..100_000).prop_map(|(venue, price, ts)| Observation {
             venue,
-            -500_000i64..500_000,
-            0u64..100_000,
-        )
-            .prop_map(|(venue, price, ts)| Observation {
-                venue,
-                symbol: Symbol("BTC-USD".to_string()),
-                price: Decimal::from(price),
-                ts_ms: ts,
-            })
+            symbol: Symbol("BTC-USD".to_string()),
+            price: Decimal::from(price),
+            ts_ms: ts,
+        })
     }
 
     proptest! {

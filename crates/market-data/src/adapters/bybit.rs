@@ -12,7 +12,9 @@ use std::sync::Arc;
 
 use lq_core::bus::{EventBus, Topic};
 use lq_core::event::{FeedStatus, MarketEvent};
-use lq_core::models::{LevelChange, MarketTick, OrderBookLevel, OrderBookDelta, OrderBookSnapshot, Trade};
+use lq_core::models::{
+    LevelChange, MarketTick, OrderBookDelta, OrderBookLevel, OrderBookSnapshot, Trade,
+};
 use lq_types::{Exchange, Side, Symbol, TimestampMs};
 use serde_json::Value;
 
@@ -55,7 +57,10 @@ impl BybitDecoder {
         let Some(data) = value.get("data") else {
             return Ok(());
         };
-        let typ = value.get("type").and_then(Value::as_str).unwrap_or("snapshot");
+        let typ = value
+            .get("type")
+            .and_then(Value::as_str)
+            .unwrap_or("snapshot");
         let ts = value
             .get("ts")
             .and_then(Value::as_u64)
@@ -80,32 +85,46 @@ impl BybitDecoder {
 
         if typ == "snapshot" || !self.have_snapshot {
             self.have_snapshot = true;
-            let _ = self.bus.market().try_publish(MarketEvent::Snapshot(OrderBookSnapshot {
-                venue: self.venue,
-                symbol: self.symbol.clone(),
-                sequence: self.seq,
-                event_ts: now,
-                exchange_ts: now,
-                bids,
-                asks,
-            }));
+            let _ = self
+                .bus
+                .market()
+                .try_publish(MarketEvent::Snapshot(OrderBookSnapshot {
+                    venue: self.venue,
+                    symbol: self.symbol.clone(),
+                    sequence: self.seq,
+                    event_ts: now,
+                    exchange_ts: now,
+                    bids,
+                    asks,
+                }));
         } else {
             let mut changes = Vec::with_capacity(bids.len() + asks.len());
             for l in &bids {
-                changes.push(LevelChange { side: Side::Bid, price: l.price, qty: l.qty });
+                changes.push(LevelChange {
+                    side: Side::Bid,
+                    price: l.price,
+                    qty: l.qty,
+                });
             }
             for l in &asks {
-                changes.push(LevelChange { side: Side::Ask, price: l.price, qty: l.qty });
+                changes.push(LevelChange {
+                    side: Side::Ask,
+                    price: l.price,
+                    qty: l.qty,
+                });
             }
-            let _ = self.bus.market().try_publish(MarketEvent::Delta(OrderBookDelta {
-                venue: self.venue,
-                symbol: self.symbol.clone(),
-                sequence: self.seq,
-                event_ts: now,
-                exchange_ts: now,
-                changes,
-                clear: false,
-            }));
+            let _ = self
+                .bus
+                .market()
+                .try_publish(MarketEvent::Delta(OrderBookDelta {
+                    venue: self.venue,
+                    symbol: self.symbol.clone(),
+                    sequence: self.seq,
+                    event_ts: now,
+                    exchange_ts: now,
+                    changes,
+                    clear: false,
+                }));
         }
         Ok(())
     }
@@ -126,7 +145,10 @@ impl BybitDecoder {
                 Some("Sell") => Side::Ask,
                 _ => continue,
             };
-            let ts = row.get("T").and_then(Value::as_u64).unwrap_or_else(|| TimestampMs::now().as_u64());
+            let ts = row
+                .get("T")
+                .and_then(Value::as_u64)
+                .unwrap_or_else(|| TimestampMs::now().as_u64());
             let now = self.ts(ts);
             let trade = Trade {
                 venue: self.venue,
@@ -137,7 +159,10 @@ impl BybitDecoder {
                 event_ts: now,
                 exchange_ts: now,
             };
-            let _ = self.bus.market().try_publish(MarketEvent::Trade(trade.clone()));
+            let _ = self
+                .bus
+                .market()
+                .try_publish(MarketEvent::Trade(trade.clone()));
             let _ = self.bus.market().try_publish(MarketEvent::Tick(MarketTick {
                 venue: self.venue,
                 symbol: self.symbol.clone(),
@@ -237,7 +262,10 @@ mod tests {
         .unwrap();
         match sub.recv().await.unwrap() {
             MarketEvent::Delta(delta) => {
-                assert!(delta.changes.iter().any(|c| c.side == Side::Bid && c.qty.to_string() == "0.7"));
+                assert!(delta
+                    .changes
+                    .iter()
+                    .any(|c| c.side == Side::Bid && c.qty.to_string() == "0.7"));
             }
             other => panic!("expected delta, got {other:?}"),
         }

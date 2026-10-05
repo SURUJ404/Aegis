@@ -8,9 +8,7 @@
 
 use criterion::{criterion_group, criterion_main, Criterion};
 use lq_perps::{MarketParams, PerpsState};
-use lq_sequencer::entry::{
-    EntryPayload, LogEntry, MarketId, MarketTickCmd, PlaceOrderCmd,
-};
+use lq_sequencer::entry::{EntryPayload, LogEntry, MarketId, MarketTickCmd, PlaceOrderCmd};
 use lq_sequencer::state::StateMachine;
 use lq_types::{Exchange, OrderType, Price, Qty, Side, Symbol, TimeInForce};
 use rust_decimal::Decimal;
@@ -93,12 +91,8 @@ fn bench_place(c: &mut Criterion) {
                 // walk a non-empty book.
                 seq += 1;
                 let bid = place_cmd(Side::Bid, dec!(99), dec!(1), Some(0));
-                sm.apply(&entry(
-                    seq,
-                    &m,
-                    EntryPayload::PlaceOrder(bid.clone()),
-                ))
-                .expect("rest bid");
+                sm.apply(&entry(seq, &m, EntryPayload::PlaceOrder(bid.clone())))
+                    .expect("rest bid");
                 (sm, m, seq)
             },
             |(mut sm, m, mut seq)| {

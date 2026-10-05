@@ -79,9 +79,7 @@ where
     seq.end()
 }
 
-fn de_positions<'de, D>(
-    deserializer: D,
-) -> Result<BTreeMap<MarketId, Position>, D::Error>
+fn de_positions<'de, D>(deserializer: D) -> Result<BTreeMap<MarketId, Position>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
@@ -122,8 +120,10 @@ impl Subaccount {
 
         if old == Decimal::ZERO {
             // Open.
-            self.positions
-                .insert(market.clone(), Position::new(signed_qty, price, funding_index));
+            self.positions.insert(
+                market.clone(),
+                Position::new(signed_qty, price, funding_index),
+            );
             return;
         }
 

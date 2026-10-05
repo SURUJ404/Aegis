@@ -207,7 +207,10 @@ impl PerpsState {
     }
 
     pub fn funding_index(&self, market: &MarketId) -> Decimal {
-        self.funding_index.get(market).copied().unwrap_or(Decimal::ZERO)
+        self.funding_index
+            .get(market)
+            .copied()
+            .unwrap_or(Decimal::ZERO)
     }
 
     pub fn market_params(&self, market: &MarketId) -> MarketParams {
@@ -260,7 +263,11 @@ impl PerpsState {
         self.requirement_of(subaccount, |p| p.maintenance_margin_ratio)
     }
 
-    fn requirement_of(&self, subaccount: SubaccountId, ratio: fn(&MarketParams) -> Decimal) -> Decimal {
+    fn requirement_of(
+        &self,
+        subaccount: SubaccountId,
+        ratio: fn(&MarketParams) -> Decimal,
+    ) -> Decimal {
         let Some(sa) = self.subaccounts.get(&subaccount) else {
             return Decimal::ZERO;
         };
@@ -311,9 +318,7 @@ impl PerpsState {
         let stored: Vec<SubaccountId> = self.pending_liquidations.iter().copied().collect();
         for id in &recomputed {
             if !stored.contains(id) {
-                return Err(InvariantViolation::UnflaggedBelowMaintenance {
-                    subaccount: *id,
-                });
+                return Err(InvariantViolation::UnflaggedBelowMaintenance { subaccount: *id });
             }
         }
         if recomputed != stored {
@@ -419,11 +424,7 @@ impl PerpsState {
             let count = self
                 .open_orders
                 .get(&sub)
-                .map(|set| {
-                    set.iter()
-                        .filter(|id| excluding != Some(**id))
-                        .count()
-                })
+                .map(|set| set.iter().filter(|id| excluding != Some(**id)).count())
                 .unwrap_or(0);
             if count >= self.cfg.max_open_orders as usize {
                 return PreTradeVerdict::Reject {
@@ -436,9 +437,9 @@ impl PerpsState {
         if cmd.reduce_only {
             let pos = self.position(sub, market);
             let reduces_long = matches!(cmd.side, Side::Ask);
-            let wrong_direction =
-                pos == Decimal::ZERO || (reduces_long && pos < Decimal::ZERO)
-                    || (!reduces_long && pos > Decimal::ZERO);
+            let wrong_direction = pos == Decimal::ZERO
+                || (reduces_long && pos < Decimal::ZERO)
+                || (!reduces_long && pos > Decimal::ZERO);
             if wrong_direction {
                 return PreTradeVerdict::Reject {
                     code: PreTradeCode::ReduceOnlyExceedsPosition,
@@ -544,7 +545,11 @@ impl PerpsState {
     /// Marginal initial-margin increase if every other open order of the
     /// subaccount filled at its limit (worst-case, direction aware: orders
     /// that *reduce* an existing position reserve nothing).
-    fn open_order_margin_reserve(&self, subaccount: SubaccountId, excluding: Option<Uuid>) -> Decimal {
+    fn open_order_margin_reserve(
+        &self,
+        subaccount: SubaccountId,
+        excluding: Option<Uuid>,
+    ) -> Decimal {
         let Some(ids) = self.open_orders.get(&subaccount) else {
             return Decimal::ZERO;
         };
@@ -618,7 +623,13 @@ impl PerpsState {
         out
     }
 
-    fn track_place(&mut self, sub: SubaccountId, order_id: Uuid, market: &MarketId, reduce_only: bool) {
+    fn track_place(
+        &mut self,
+        sub: SubaccountId,
+        order_id: Uuid,
+        market: &MarketId,
+        reduce_only: bool,
+    ) {
         self.order_owner.insert(order_id, sub);
         self.open_orders.entry(sub).or_default().insert(order_id);
         if reduce_only {
@@ -766,9 +777,7 @@ impl PerpsState {
                     }
                 }
                 ApplyOutput::Placed {
-                    order_id,
-                    resting,
-                    ..
+                    order_id, resting, ..
                 } => {
                     if !resting {
                         self.close_bookkeeping(*order_id);
@@ -992,7 +1001,12 @@ impl PerpsState {
         let market = &entry.market;
 
         let mut reject = |reason: &'static str| {
-            out.push(Self::reject_output(Uuid::nil(), market, reason, entry.ts_ms));
+            out.push(Self::reject_output(
+                Uuid::nil(),
+                market,
+                reason,
+                entry.ts_ms,
+            ));
         };
 
         if sub == INSURANCE_SUBACCOUNT {
@@ -1144,7 +1158,12 @@ impl PerpsState {
             } else {
                 sa.collateral -= cash;
             }
-            sa.apply_fill(&meta.market, -sign * residual, meta.limit_price, funding_idx);
+            sa.apply_fill(
+                &meta.market,
+                -sign * residual,
+                meta.limit_price,
+                funding_idx,
+            );
 
             // Insurance takes the opposite side (it profits when marked:
             // it bought below / sold above the reference price).
@@ -1254,14 +1273,15 @@ impl PerpsState {
             };
 
             let funding_idx = self.funding_index(&market);
-            let ins_signed = if ins_qty > Decimal::ZERO { -close } else { close };
+            let ins_signed = if ins_qty > Decimal::ZERO {
+                -close
+            } else {
+                close
+            };
             let cp_signed = -ins_signed;
 
             {
-                let ins = self
-                    .subaccounts
-                    .entry(INSURANCE_SUBACCOUNT)
-                    .or_default();
+                let ins = self.subaccounts.entry(INSURANCE_SUBACCOUNT).or_default();
                 if ins_signed < Decimal::ZERO {
                     // Insurance sold `close` (long): receives cash.
                     ins.collateral += price * close;
@@ -1430,7 +1450,8 @@ impl StateMachine for PerpsState {
                             ));
                             None
                         }
-                        None => match self.pre_trade_check(&entry.market, new, Some(*old_order_id)) {
+                        None => match self.pre_trade_check(&entry.market, new, Some(*old_order_id))
+                        {
                             PreTradeVerdict::Allow { .. } => Some(new.as_ref().clone()),
                             PreTradeVerdict::Reduce { qty, .. } => {
                                 let mut smaller = new.as_ref().clone();
@@ -1505,8 +1526,13 @@ impl StateMachine for PerpsState {
                 max_qty,
             } => {
                 let mut sub_clob_out = Vec::new();
-                liquidation =
-                    self.start_liquidation(entry, *subaccount, *max_qty, &mut sub_clob_out, &mut out)?;
+                liquidation = self.start_liquidation(
+                    entry,
+                    *subaccount,
+                    *max_qty,
+                    &mut sub_clob_out,
+                    &mut out,
+                )?;
                 if liquidation.is_none() {
                     // Validation failed: still consume the entry's sequence.
                     sub_clob_out = self.clob.apply(entry)?;
@@ -1584,7 +1610,10 @@ impl StateMachine for PerpsState {
         let mut h = new_hasher();
         write_str(&mut h, "lq-perps-v1");
         write_decimal(&mut h, &self.cfg.default_market_params.initial_margin_ratio);
-        write_decimal(&mut h, &self.cfg.default_market_params.maintenance_margin_ratio);
+        write_decimal(
+            &mut h,
+            &self.cfg.default_market_params.maintenance_margin_ratio,
+        );
         write_decimal(&mut h, &self.cfg.default_market_params.liquidation_fee_bps);
         write_decimal(&mut h, &self.cfg.max_order_qty);
         write_decimal(&mut h, &self.cfg.max_position_qty);
@@ -1744,11 +1773,7 @@ impl StateMachine for PerpsState {
                 .iter()
                 .map(|(k, v)| (k.clone(), *v))
                 .collect(),
-            order_owner: self
-                .order_owner
-                .iter()
-                .map(|(k, v)| (*k, *v))
-                .collect(),
+            order_owner: self.order_owner.iter().map(|(k, v)| (*k, *v)).collect(),
             open_orders: self
                 .open_orders
                 .iter()
@@ -1828,14 +1853,8 @@ mod tests {
 
     #[test]
     fn requirement_is_abs_qty_times_price_times_ratio() {
-        assert_eq!(
-            requirement(dec!(2), dec!(100), dec!(0.10)),
-            dec!(20)
-        );
-        assert_eq!(
-            requirement(dec!(-2), dec!(100), dec!(0.05)),
-            dec!(10)
-        );
+        assert_eq!(requirement(dec!(2), dec!(100), dec!(0.10)), dec!(20));
+        assert_eq!(requirement(dec!(-2), dec!(100), dec!(0.05)), dec!(10));
     }
 
     #[test]

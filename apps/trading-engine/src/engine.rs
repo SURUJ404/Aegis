@@ -5,6 +5,8 @@
 //! control topics. Strategies are pure and owned by the loop, so their state
 //! (quote timing, inventory skew) stays consistent without locks.
 
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -12,7 +14,7 @@ use dashmap::DashMap;
 use lq_api::ApiState;
 use lq_core::bus::EventBus;
 use lq_core::config::{EngineConfig, Mode};
-use lq_core::event::{ControlEvent, FeedStatus, MarketEvent};
+use lq_core::event::{ControlEvent, ExecutionEvent, FeedStatus, MarketEvent};
 use lq_core::models::{LatencyMeasurement, LatencyStage, Order, StrategyDecision};
 use lq_core::state::EngineState;
 use lq_exchange::spec::InstrumentSpec;
@@ -25,18 +27,119 @@ use lq_orderbook::analytics::{AnalyticsConfig, MarketStateEngine};
 use lq_orderbook::engine::BookStore;
 use lq_persistence::{PersistenceSink, PostgresStore, RedisHotStateSink};
 use lq_risk::{RiskDecision, RiskEngine};
+use lq_sequencer::{EntryPayload, FillCmd, FillLiquidity, LogEntry, MarketId, PlaceOrderCmd, Wal};
 use lq_simulator::{SimulatedFeed, SyntheticDataConfig};
 use lq_strategy::{MarketMakingStrategy, StrategyEngine};
 use lq_telemetry::{Metrics, MetricsServer};
 use lq_types::{Exchange, OrderStatus, OrderType, Symbol, TimestampMs};
 use rust_decimal_macros::dec;
 
+/// Append-only sequencer log writer backing `GET /api/v1/log`.
+///
+/// The WAL is a read-model of the engine's order flow (accepted places,
+/// venue fills, cancels/expiries) — sequence numbers are assigned here and
+/// stay gap-free across restarts. The state machines are never touched; they
+/// replay from this file on the read side.
+struct WalWriter {
+    wal: Wal,
+    next_seq: u64,
+    market_seqs: BTreeMap<MarketId, u64>,
+}
+
+impl WalWriter {
+    fn open(path: impl AsRef<Path>) -> Result<Self, lq_sequencer::WalError> {
+        let wal = Wal::open(path)?;
+        let existing = Wal::read_all(wal.path())?;
+        let mut next_seq = 1u64;
+        let mut market_seqs = BTreeMap::new();
+        for e in &existing {
+            next_seq = next_seq.max(e.global_seq.saturating_add(1));
+            let slot = market_seqs.entry(e.market.clone()).or_insert(0u64);
+            *slot = (*slot).max(e.market_seq);
+        }
+        Ok(Self {
+            wal,
+            next_seq,
+            market_seqs,
+        })
+    }
+
+    fn append(&mut self, market: MarketId, ts_ms: u64, payload: EntryPayload) {
+        let market_seq = self.market_seqs.get(&market).copied().unwrap_or(0) + 1;
+        let entry = LogEntry {
+            global_seq: self.next_seq,
+            market_seq,
+            market: market.clone(),
+            ts_ms,
+            payload,
+        };
+        match self.wal.append(&entry) {
+            Ok(()) => {
+                self.market_seqs.insert(market, market_seq);
+                self.next_seq += 1;
+            }
+            Err(e) => tracing::warn!(err = %e, "wal append failed; seq not advanced"),
+        }
+    }
+}
+
+fn wal_append(wal: &mut Option<WalWriter>, market: MarketId, ts_ms: u64, payload: EntryPayload) {
+    if let Some(w) = wal {
+        w.append(market, ts_ms, payload);
+    }
+}
+
+/// Record venue-side lifecycle events in the WAL. Runs before
+/// `apply_execution_event` so order lookups always see a live entry.
+fn wal_append_exec(wal: &mut Option<WalWriter>, event: &ExecutionEvent, state: &EngineState) {
+    let Some(w) = wal.as_mut() else {
+        return;
+    };
+    match event {
+        ExecutionEvent::Fill(f) => {
+            let payload = EntryPayload::Fill(FillCmd {
+                order_id: f.order_id,
+                price: f.price,
+                quantity: f.qty,
+                fee: f.fee,
+                // The engine's own orders are quotes (makers); the fee value
+                // is carried through from the venue event.
+                liquidity: FillLiquidity::Maker,
+            });
+            w.append(
+                MarketId::new(f.venue, f.symbol.clone()),
+                f.event_ts.as_u64(),
+                payload,
+            );
+        }
+        ExecutionEvent::Cancelled {
+            order_id,
+            venue,
+            ts,
+        }
+        | ExecutionEvent::Expired {
+            order_id,
+            venue,
+            ts,
+        } => {
+            if let Some(order) = state.orders.get(order_id) {
+                w.append(
+                    MarketId::new(*venue, order.symbol.clone()),
+                    ts.as_u64(),
+                    EntryPayload::CancelOrder {
+                        order_id: *order_id,
+                    },
+                );
+            }
+        }
+        _ => {}
+    }
+}
+
 /// Entry point: build every component and run the event loop.
 pub async fn run(cfg: EngineConfig) -> anyhow::Result<()> {
     if cfg.mode == Mode::Live {
-        anyhow::bail!(
-            "live execution is not implemented in this build; set mode = \"paper\""
-        );
+        anyhow::bail!("live execution is not implemented in this build; set mode = \"paper\"");
     }
 
     let bus = Arc::new(EventBus::new());
@@ -87,12 +190,41 @@ pub async fn run(cfg: EngineConfig) -> anyhow::Result<()> {
         }));
     }
 
-    // Control-plane API.
+    // Sequencer WAL: read-model of the order flow for GET /api/v1/log.
+    let wal_path = PathBuf::from(&cfg.data_dir).join("wal.log");
+    let mut wal_writer = match WalWriter::open(&wal_path) {
+        Ok(w) => Some(w),
+        Err(e) => {
+            tracing::warn!(
+                err = %e,
+                path = %wal_path.display(),
+                "wal unavailable; /api/v1/log serves an empty log"
+            );
+            None
+        }
+    };
+
+    // Control-plane API + the built dashboard (web/dist), so one origin
+    // serves the UI and the API it polls.
     {
         let api_bind = cfg.api.bind.clone();
-        let app = lq_api::build_router(
-            ApiState::new(state.clone(), Arc::clone(&bus)).with_token(cfg.api.token.clone()),
-        );
+        let mut api = ApiState::new(state.clone(), Arc::clone(&bus))
+            .with_token(cfg.api.token.clone())
+            .with_books(Arc::clone(&books))
+            .with_wal(&wal_path);
+        let web_dir = PathBuf::from(&cfg.api.web_dir);
+        if cfg.api.web_dir.is_empty() {
+            tracing::info!("dashboard: static serving disabled (api.web_dir empty)");
+        } else if web_dir.join("index.html").is_file() {
+            tracing::info!(dir = %web_dir.display(), "dashboard: serving built assets");
+            api = api.with_web(web_dir);
+        } else {
+            tracing::warn!(
+                dir = %web_dir.display(),
+                "dashboard: index.html missing; serving the API only (run `npm run build` in web/)"
+            );
+        }
+        let app = lq_api::build_router(api);
         handles.push(tokio::spawn(async move {
             let listener = match tokio::net::TcpListener::bind(&api_bind).await {
                 Ok(l) => l,
@@ -255,9 +387,11 @@ pub async fn run(cfg: EngineConfig) -> anyhow::Result<()> {
                     &risk,
                     &metrics,
                     running,
+                    &mut wal_writer,
                 ).await;
             }
             Some(event) = exec_sub.recv() => {
+                wal_append_exec(&mut wal_writer, &event, &state);
                 metrics.record_execution(&event);
                 state.apply_execution_event(&event);
                 PositionManager::on_execution_event(&state, &event);
@@ -297,9 +431,10 @@ pub async fn run(cfg: EngineConfig) -> anyhow::Result<()> {
 }
 
 fn cfg_symbol_seed(symbol: &Symbol) -> u64 {
-    symbol.as_str().bytes().fold(0x5EED, |acc, b| {
-        acc.wrapping_mul(31).wrapping_add(b as u64)
-    })
+    symbol
+        .as_str()
+        .bytes()
+        .fold(0x5EED, |acc, b| acc.wrapping_mul(31).wrapping_add(b as u64))
 }
 
 fn record_stage(metrics: &Metrics, stage: LatencyStage, started: Instant, event_ts: TimestampMs) {
@@ -329,13 +464,19 @@ async fn on_market_event(
     risk: &RiskEngine,
     metrics: &Metrics,
     running: bool,
+    wal: &mut Option<WalWriter>,
 ) {
     let (venue, symbol) = match event {
         MarketEvent::Snapshot(s) => (s.venue, s.symbol.clone()),
         MarketEvent::Delta(d) => (d.venue, d.symbol.clone()),
         MarketEvent::Trade(t) => (t.venue, t.symbol.clone()),
         MarketEvent::Tick(t) => (t.venue, t.symbol.clone()),
-        MarketEvent::Status { venue, symbol, status, .. } => {
+        MarketEvent::Status {
+            venue,
+            symbol,
+            status,
+            ..
+        } => {
             match status {
                 FeedStatus::Disconnected => {
                     tracing::warn!(venue = %venue, symbol = %symbol, "feed disconnected; orders suspect");
@@ -391,9 +532,14 @@ async fn on_market_event(
         let position_ref = position.as_ref();
         let decisions =
             strategies.on_market_state(&ms, inventory, position_ref, state.is_halted(), true);
-        record_stage(metrics, LatencyStage::StrategyDecision, loop_start, event_ts);
+        record_stage(
+            metrics,
+            LatencyStage::StrategyDecision,
+            loop_start,
+            event_ts,
+        );
         for decision in decisions {
-            apply_decision(&decision, venues, risk, state, ms.event_ts, metrics).await;
+            apply_decision(&decision, venues, risk, state, ms.event_ts, metrics, wal).await;
         }
     }
 
@@ -415,6 +561,7 @@ async fn apply_decision(
     state: &EngineState,
     now: TimestampMs,
     metrics: &Metrics,
+    wal: &mut Option<WalWriter>,
 ) {
     match decision {
         StrategyDecision::Quote(intent) => {
@@ -440,6 +587,7 @@ async fn apply_decision(
                     state,
                     now,
                     metrics,
+                    wal,
                 )
                 .await;
             }
@@ -459,6 +607,7 @@ async fn apply_decision(
                 state,
                 now,
                 metrics,
+                wal,
             )
             .await;
         }
@@ -483,6 +632,7 @@ async fn place_checked(
     state: &EngineState,
     now: TimestampMs,
     metrics: &Metrics,
+    wal: &mut Option<WalWriter>,
 ) {
     let mark = state
         .market_state
@@ -490,16 +640,23 @@ async fn place_checked(
         .map(|m| m.mid)
         .unwrap_or(price);
 
-    let mut order = Order::new(ven.venue(), symbol.clone(), side, order_type, Some(price), qty);
+    let mut order = Order::new(
+        ven.venue(),
+        symbol.clone(),
+        side,
+        order_type,
+        Some(price),
+        qty,
+    );
     let risk_start = Instant::now();
     match risk.validate_order_at(&order, mark, now) {
         RiskDecision::Allow => {
-            place(ven, &mut order, state, metrics, now).await;
+            place(ven, &mut order, state, metrics, now, wal).await;
         }
         RiskDecision::Reduce { qty, .. } => {
             if qty > lq_types::Qty::ZERO {
                 order.quantity = qty;
-                place(ven, &mut order, state, metrics, now).await;
+                place(ven, &mut order, state, metrics, now, wal).await;
             }
         }
         RiskDecision::Reject(reason) => {
@@ -518,6 +675,7 @@ async fn place(
     state: &EngineState,
     metrics: &Metrics,
     now: TimestampMs,
+    wal: &mut Option<WalWriter>,
 ) {
     let submit_start = Instant::now();
     state.orders.insert(order.order_id, order.clone());
@@ -525,6 +683,24 @@ async fn place(
         Ok(placement) => {
             if placement.status == OrderStatus::Rejected {
                 tracing::warn!(order = %order.order_id, "venue rejected order");
+            } else {
+                // Accepted: sequence it. Rejected placements never enter the
+                // log (the venue refused them outright).
+                wal_append(
+                    wal,
+                    MarketId::new(order.venue, order.symbol.clone()),
+                    now.as_u64(),
+                    EntryPayload::PlaceOrder(PlaceOrderCmd {
+                        order_id: order.order_id,
+                        client_order_id: order.client_order_id.clone(),
+                        side: order.side,
+                        order_type: order.order_type,
+                        price: order.price,
+                        quantity: order.quantity,
+                        time_in_force: order.time_in_force,
+                        ..Default::default()
+                    }),
+                );
             }
         }
         Err(e) => {

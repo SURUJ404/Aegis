@@ -27,10 +27,7 @@ use uuid::Uuid;
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum StateError {
     #[error("illegal transition {from:?} -> {to:?}")]
-    IllegalTransition {
-        from: OrderStatus,
-        to: OrderStatus,
-    },
+    IllegalTransition { from: OrderStatus, to: OrderStatus },
     #[error("order {order_id} already terminal ({status:?})")]
     AlreadyTerminal { order_id: Uuid, status: OrderStatus },
     #[error("fill qty {qty} exceeds remaining {remaining} on order {order_id}")]
@@ -59,15 +56,10 @@ impl OrderStateMachine {
             };
         }
         let legal = match from {
-            OrderStatus::Created => matches!(
-                to,
-                OrderStatus::Submitted | OrderStatus::Rejected
-            ),
+            OrderStatus::Created => matches!(to, OrderStatus::Submitted | OrderStatus::Rejected),
             OrderStatus::Submitted => matches!(
                 to,
-                OrderStatus::Acknowledged
-                    | OrderStatus::Rejected
-                    | OrderStatus::Cancelled
+                OrderStatus::Acknowledged | OrderStatus::Rejected | OrderStatus::Cancelled
             ),
             OrderStatus::Acknowledged => matches!(
                 to,
@@ -80,9 +72,7 @@ impl OrderStateMachine {
             ),
             OrderStatus::PartiallyFilled => matches!(
                 to,
-                OrderStatus::Filled
-                    | OrderStatus::CancelRequested
-                    | OrderStatus::Expired
+                OrderStatus::Filled | OrderStatus::CancelRequested | OrderStatus::Expired
             ),
             OrderStatus::CancelRequested => matches!(to, OrderStatus::Cancelled),
             OrderStatus::Filled
@@ -141,10 +131,10 @@ impl OrderStateMachine {
 
         // Weighted average fill price.
         order.avg_fill_price = match order.avg_fill_price {
-            Some(prev) => {
-                Some((prev * (order.filled_quantity - fill_qty) + fill_price * fill_qty)
-                    / order.filled_quantity)
-            }
+            Some(prev) => Some(
+                (prev * (order.filled_quantity - fill_qty) + fill_price * fill_qty)
+                    / order.filled_quantity,
+            ),
             None => Some(fill_price),
         };
 
@@ -223,31 +213,20 @@ mod tests {
 
     #[test]
     fn legal_transitions() {
-        assert!(OrderStateMachine::transition(
-            OrderStatus::Created,
-            OrderStatus::Submitted
-        )
-        .is_ok());
-        assert!(OrderStateMachine::transition(
-            OrderStatus::Submitted,
-            OrderStatus::Acknowledged
-        )
-        .is_ok());
-        assert!(OrderStateMachine::transition(
-            OrderStatus::Acknowledged,
-            OrderStatus::Filled
-        )
-        .is_ok());
-        assert!(OrderStateMachine::transition(
-            OrderStatus::Filled,
-            OrderStatus::Cancelled
-        )
-        .is_err());
-        assert!(OrderStateMachine::transition(
-            OrderStatus::Created,
-            OrderStatus::Filled
-        )
-        .is_err());
+        assert!(
+            OrderStateMachine::transition(OrderStatus::Created, OrderStatus::Submitted).is_ok()
+        );
+        assert!(
+            OrderStateMachine::transition(OrderStatus::Submitted, OrderStatus::Acknowledged)
+                .is_ok()
+        );
+        assert!(
+            OrderStateMachine::transition(OrderStatus::Acknowledged, OrderStatus::Filled).is_ok()
+        );
+        assert!(
+            OrderStateMachine::transition(OrderStatus::Filled, OrderStatus::Cancelled).is_err()
+        );
+        assert!(OrderStateMachine::transition(OrderStatus::Created, OrderStatus::Filled).is_err());
     }
 
     #[test]

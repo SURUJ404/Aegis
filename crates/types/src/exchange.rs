@@ -39,12 +39,24 @@ pub enum Exchange {
 impl Exchange {
     /// Whether this venue is live (routes real money) or simulated.
     pub fn is_live(self) -> bool {
-        matches!(self, Self::Okx | Self::Binance | Self::Bybit | Self::RaydiumClmm | Self::OrcaWhirlpools | Self::Phoenix | Self::OpenBook)
+        matches!(
+            self,
+            Self::Okx
+                | Self::Binance
+                | Self::Bybit
+                | Self::RaydiumClmm
+                | Self::OrcaWhirlpools
+                | Self::Phoenix
+                | Self::OpenBook
+        )
     }
 
     /// Whether this is a Solana-based venue.
     pub fn is_solana(self) -> bool {
-        matches!(self, Self::RaydiumClmm | Self::OrcaWhirlpools | Self::Phoenix | Self::OpenBook)
+        matches!(
+            self,
+            Self::RaydiumClmm | Self::OrcaWhirlpools | Self::Phoenix | Self::OpenBook
+        )
     }
 
     /// The canonical short name.
@@ -107,8 +119,7 @@ impl VenueInstrument {
     pub fn normalized_symbol(&self) -> Symbol {
         // Simple normalization: keep as-is for now; venues with divergent
         // symbol formats plug in here.
-        Symbol::from_str(&self.symbol)
-            .unwrap_or_else(|_| Symbol(self.symbol.to_ascii_uppercase()))
+        Symbol::from_str(&self.symbol).unwrap_or_else(|_| Symbol(self.symbol.to_ascii_uppercase()))
     }
 }
 

@@ -22,10 +22,13 @@ impl FeeTier {
     };
 
     pub fn fee_for(&self, taker: bool, notional: Amount) -> Amount {
-        let bps = if taker { self.taker_bps } else { self.maker_bps };
-        let rate =
-            rust_decimal::Decimal::from_f64_retain(bps).unwrap_or_default()
-                / rust_decimal::Decimal::from(10_000);
+        let bps = if taker {
+            self.taker_bps
+        } else {
+            self.maker_bps
+        };
+        let rate = rust_decimal::Decimal::from_f64_retain(bps).unwrap_or_default()
+            / rust_decimal::Decimal::from(10_000);
         notional * rate
     }
 }

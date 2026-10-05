@@ -137,15 +137,17 @@ mod tests {
                 clear: false,
             }));
         }
-        let _ = bus.market().try_publish(MarketEvent::Snapshot(OrderBookSnapshot {
-            venue: Exchange::Paper,
-            symbol: Symbol("BTC-USDT".into()),
-            sequence: 10,
-            event_ts: TimestampMs(10),
-            exchange_ts: TimestampMs(10),
-            bids: vec![OrderBookLevel::new(dec!(99.8), dec!(10.0))],
-            asks: vec![OrderBookLevel::new(dec!(100.2), dec!(10.0))],
-        }));
+        let _ = bus
+            .market()
+            .try_publish(MarketEvent::Snapshot(OrderBookSnapshot {
+                venue: Exchange::Paper,
+                symbol: Symbol("BTC-USDT".into()),
+                sequence: 10,
+                event_ts: TimestampMs(10),
+                exchange_ts: TimestampMs(10),
+                bids: vec![OrderBookLevel::new(dec!(99.8), dec!(10.0))],
+                asks: vec![OrderBookLevel::new(dec!(100.2), dec!(10.0))],
+            }));
 
         let fill = ExecutionEvent::Fill(lq_core::models::FillEvent {
             execution_id: Uuid::new_v4(),
@@ -165,8 +167,7 @@ mod tests {
 
         // Let the workers drain (with a bounded wait for determinism).
         for _ in 0..50 {
-            if store.market.lock().unwrap().len() == 4
-                && store.execution.lock().unwrap().len() == 1
+            if store.market.lock().unwrap().len() == 4 && store.execution.lock().unwrap().len() == 1
             {
                 break;
             }

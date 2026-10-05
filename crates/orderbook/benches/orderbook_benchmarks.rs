@@ -2,9 +2,7 @@ use std::hint::black_box;
 
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use lq_core::event::MarketEvent;
-use lq_core::models::{
-    LevelChange, OrderBookDelta, OrderBookLevel, OrderBookSnapshot, Trade,
-};
+use lq_core::models::{LevelChange, OrderBookDelta, OrderBookLevel, OrderBookSnapshot, Trade};
 use lq_core::EventBus;
 use lq_exchange::spec::InstrumentSpec;
 use lq_orderbook::analytics::{AnalyticsConfig, MarketStateEngine};
@@ -85,24 +83,22 @@ fn make_update_delta(seq: u64) -> OrderBookDelta {
 /// Generate N sequential deltas for incremental apply benchmarks.
 fn make_delta_chain(start_seq: u64, count: usize) -> Vec<OrderBookDelta> {
     (0..count)
-        .map(|i| {
-            OrderBookDelta {
-                venue: VENUE,
-                symbol: symbol(),
-                sequence: start_seq + i as u64,
-                event_ts: TimestampMs(1_001 + i as u64),
-                exchange_ts: TimestampMs(1_001 + i as u64),
-                changes: vec![LevelChange {
-                    side: if i % 2 == 0 { Side::Bid } else { Side::Ask },
-                    price: if i % 2 == 0 {
-                        dec!(100.0) - Decimal::from((i / 2) as u64) * dec!(0.1)
-                    } else {
-                        dec!(100.1) + Decimal::from((i / 2) as u64) * dec!(0.1)
-                    },
-                    qty: dec!(1.0) + Decimal::from((i % 10) as u64),
-                }],
-                clear: false,
-            }
+        .map(|i| OrderBookDelta {
+            venue: VENUE,
+            symbol: symbol(),
+            sequence: start_seq + i as u64,
+            event_ts: TimestampMs(1_001 + i as u64),
+            exchange_ts: TimestampMs(1_001 + i as u64),
+            changes: vec![LevelChange {
+                side: if i % 2 == 0 { Side::Bid } else { Side::Ask },
+                price: if i % 2 == 0 {
+                    dec!(100.0) - Decimal::from((i / 2) as u64) * dec!(0.1)
+                } else {
+                    dec!(100.1) + Decimal::from((i / 2) as u64) * dec!(0.1)
+                },
+                qty: dec!(1.0) + Decimal::from((i % 10) as u64),
+            }],
+            clear: false,
         })
         .collect()
 }
@@ -130,16 +126,20 @@ fn bench_snapshot_apply(c: &mut Criterion) {
     let mut group = c.benchmark_group("orderbook/snapshot_apply");
     for &n in &[5, 20, 100] {
         group.throughput(Throughput::Elements(n as u64 * 2));
-        group.bench_with_input(BenchmarkId::from_parameter(format!("{n}x{n}")), &n, |b, &n| {
-            b.iter_batched(
-                || OrderBook::new(VENUE, symbol(), spec()),
-                |mut book| {
-                    book.apply_snapshot(&make_snapshot(n, 1));
-                    black_box(book)
-                },
-                criterion::BatchSize::SmallInput,
-            );
-        });
+        group.bench_with_input(
+            BenchmarkId::from_parameter(format!("{n}x{n}")),
+            &n,
+            |b, &n| {
+                b.iter_batched(
+                    || OrderBook::new(VENUE, symbol(), spec()),
+                    |mut book| {
+                        book.apply_snapshot(&make_snapshot(n, 1));
+                        black_box(book)
+                    },
+                    criterion::BatchSize::SmallInput,
+                );
+            },
+        );
     }
     group.finish();
 }
@@ -148,29 +148,33 @@ fn bench_delta_apply(c: &mut Criterion) {
     let mut group = c.benchmark_group("orderbook/delta_apply");
     for &n in &[5, 20, 100] {
         group.throughput(Throughput::Elements(n as u64));
-        group.bench_with_input(BenchmarkId::from_parameter(format!("{n}x{n}")), &n, |b, &n| {
-            let book = make_book(n);
-            let deltas = make_delta_chain(book.sequence() + 1, 100);
-            b.iter_batched(
-                || {
-                    // Reset book to known state each iteration
-                    let mut b = make_book(n);
-                    // Apply first 50 deltas to get the book into a warm state
-                    for d in &deltas[..50] {
-                        let _ = b.apply_delta(d);
-                    }
-                    (b, 50)
-                },
-                |(mut book, start_idx)| {
-                    // Apply the remaining deltas
-                    for d in &deltas[start_idx..start_idx + 10] {
-                        black_box(book.apply_delta(d));
-                    }
-                    black_box(book)
-                },
-                criterion::BatchSize::SmallInput,
-            );
-        });
+        group.bench_with_input(
+            BenchmarkId::from_parameter(format!("{n}x{n}")),
+            &n,
+            |b, &n| {
+                let book = make_book(n);
+                let deltas = make_delta_chain(book.sequence() + 1, 100);
+                b.iter_batched(
+                    || {
+                        // Reset book to known state each iteration
+                        let mut b = make_book(n);
+                        // Apply first 50 deltas to get the book into a warm state
+                        for d in &deltas[..50] {
+                            let _ = b.apply_delta(d);
+                        }
+                        (b, 50)
+                    },
+                    |(mut book, start_idx)| {
+                        // Apply the remaining deltas
+                        for d in &deltas[start_idx..start_idx + 10] {
+                            black_box(book.apply_delta(d));
+                        }
+                        black_box(book)
+                    },
+                    criterion::BatchSize::SmallInput,
+                );
+            },
+        );
     }
     group.finish();
 }
@@ -274,11 +278,15 @@ fn bench_analytics_compute(c: &mut Criterion) {
         let now = TimestampMs(10_000);
 
         group.throughput(Throughput::Elements(1));
-        group.bench_with_input(BenchmarkId::from_parameter(n), &(book, engine), |b, (book, engine)| {
-            b.iter(|| {
-                black_box(engine.compute(book, now));
-            });
-        });
+        group.bench_with_input(
+            BenchmarkId::from_parameter(n),
+            &(book, engine),
+            |b, (book, engine)| {
+                b.iter(|| {
+                    black_box(engine.compute(book, now));
+                });
+            },
+        );
     }
     group.finish();
 }

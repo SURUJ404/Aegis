@@ -74,7 +74,10 @@ impl GeyserClient {
 
     pub async fn subscribe_accounts(&mut self, accounts: Vec<Pubkey>) -> Result<()> {
         self.subscribed_accounts = accounts.clone();
-        info!(count = accounts.len(), "Subscribed to accounts via Geyser (placeholder)");
+        info!(
+            count = accounts.len(),
+            "Subscribed to accounts via Geyser (placeholder)"
+        );
         Ok(())
     }
 
@@ -169,16 +172,21 @@ pub async fn run_geyser_feed<S: crate::SolanaEventSource>(
     loop {
         if let Err(e) = source.connect().await {
             tracing::error!(error = %e, "Geyser connect failed");
-            tokio::time::sleep(tokio::time::Duration::from_millis(source.reconnect_base_ms())).await;
+            tokio::time::sleep(tokio::time::Duration::from_millis(
+                source.reconnect_base_ms(),
+            ))
+            .await;
             continue;
         }
 
-        let _ = bus.market().try_publish(lq_core::event::MarketEvent::Status {
-            venue,
-            symbol: symbol.clone(),
-            status: FeedStatus::Healthy,
-            ts: TimestampMs::now(),
-        });
+        let _ = bus
+            .market()
+            .try_publish(lq_core::event::MarketEvent::Status {
+                venue,
+                symbol: symbol.clone(),
+                status: FeedStatus::Healthy,
+                ts: TimestampMs::now(),
+            });
 
         while let Ok(event) = source.next_event().await {
             let normalized = event.to_market_event(venue);
@@ -186,13 +194,18 @@ pub async fn run_geyser_feed<S: crate::SolanaEventSource>(
         }
 
         warn!("Geyser disconnected, reconnecting...");
-        let _ = bus.market().try_publish(lq_core::event::MarketEvent::Status {
-            venue,
-            symbol: symbol.clone(),
-            status: FeedStatus::Disconnected,
-            ts: TimestampMs::now(),
-        });
+        let _ = bus
+            .market()
+            .try_publish(lq_core::event::MarketEvent::Status {
+                venue,
+                symbol: symbol.clone(),
+                status: FeedStatus::Disconnected,
+                ts: TimestampMs::now(),
+            });
 
-        tokio::time::sleep(tokio::time::Duration::from_millis(source.reconnect_base_ms())).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(
+            source.reconnect_base_ms(),
+        ))
+        .await;
     }
 }

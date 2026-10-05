@@ -106,3 +106,66 @@ export interface ControlResponse {
   accepted: boolean;
   message: string;
 }
+
+/** `GET /api/v1/book` — aggregated depth from the live engine books. */
+export interface BookLevel {
+  price: string;
+  qty: string;
+}
+
+export interface BookResponse {
+  seq: number;
+  bids: BookLevel[];
+  asks: BookLevel[];
+}
+
+/** One sequencer WAL entry as flattened by `GET /api/v1/log`. */
+export interface LogEntry {
+  seq: number;
+  kind: string;
+  side: Side | null;
+  price: string | null;
+  qty: string | null;
+  tif: string | null;
+  id: string | null;
+  /** Cancelled order of a `replace_order` row (null for every other kind). */
+  old_id: string | null;
+  reject_reason: string | null;
+}
+
+/** An open order as of the snapshot sequence. */
+export interface SnapshotOrder {
+  order_id: string;
+  side: Side;
+  price: string | null;
+  remaining: string;
+  resting: boolean;
+}
+
+export interface LogResponse {
+  entries: LogEntry[];
+  head: number;
+  /**
+   * Sequence the state fields below reflect. Equals `head` once the server's
+   * replay has caught up (immediately for a small WAL, after a background
+   * catch-up for a long one); the dashboard rebuilds any sequence itself.
+   */
+  replayed: number;
+  /**
+   * State hash of the replayed prefix — only present when the caller asks for
+   * it (`hash=1`): hashing walks every order the state holds, and the
+   * dashboard rebuilds its own hash with the shared fold.
+   */
+  state_hash: string | null;
+  /** Open orders as of `replayed` (server's own view; the UI folds its own). */
+  orders: SnapshotOrder[];
+  /** Net base position across markets as of `replayed`. */
+  position: string;
+}
+
+/** What one poll of the control plane produces. */
+export interface Snapshot {
+  state: StateSummary;
+  book: BookResponse | null;
+  log: LogResponse | null;
+}

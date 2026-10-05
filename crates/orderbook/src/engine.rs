@@ -64,8 +64,21 @@ impl BookStore {
         self.books.get(&(venue, symbol.clone())).map(|b| b.clone())
     }
 
+    /// Every `(venue, symbol)` book in the store, sorted by venue then symbol
+    /// so callers get a deterministic order (DashMap iteration is not).
+    pub fn entries(&self) -> Vec<(Exchange, Symbol)> {
+        let mut keys: Vec<(Exchange, Symbol)> =
+            self.books.iter().map(|e| e.key().clone()).collect();
+        keys.sort_unstable();
+        keys
+    }
+
     /// Mutable access for backtests / direct manipulation.
-    pub fn book_mut(&self, venue: Exchange, symbol: &Symbol) -> Option<impl std::ops::DerefMut<Target = OrderBook> + '_> {
+    pub fn book_mut(
+        &self,
+        venue: Exchange,
+        symbol: &Symbol,
+    ) -> Option<impl std::ops::DerefMut<Target = OrderBook> + '_> {
         self.books.get_mut(&(venue, symbol.clone()))
     }
 
@@ -115,7 +128,10 @@ impl BookStore {
 
     /// Number of gaps detected for a book since startup.
     pub fn gap_count(&self, venue: Exchange, symbol: &Symbol) -> u64 {
-        self.gaps.get(&(venue, symbol.clone())).map(|g| *g).unwrap_or(0)
+        self.gaps
+            .get(&(venue, symbol.clone()))
+            .map(|g| *g)
+            .unwrap_or(0)
     }
 
     /// Total sequence gaps across all books.
@@ -179,7 +195,9 @@ mod tests {
         assert_eq!(store.ingest(&snap(5)), IngestOutcome::Resync);
         assert_eq!(store.ingest(&delta(6)), IngestOutcome::Applied);
         assert_eq!(store.ingest(&delta(7)), IngestOutcome::Applied);
-        let b = store.book(Exchange::Paper, &Symbol("BTC-USDT".into())).unwrap();
+        let b = store
+            .book(Exchange::Paper, &Symbol("BTC-USDT".into()))
+            .unwrap();
         assert_eq!(b.sequence(), 7);
         assert!(b.best_bid().is_none());
     }
@@ -196,7 +214,10 @@ mod tests {
             }
             _ => panic!("expected gap"),
         }
-        assert_eq!(store.gap_count(Exchange::Paper, &Symbol("BTC-USDT".into())), 1);
+        assert_eq!(
+            store.gap_count(Exchange::Paper, &Symbol("BTC-USDT".into())),
+            1
+        );
         // After resync the book is usable again.
         store.ingest(&snap(9));
         assert_eq!(store.ingest(&delta(10)), IngestOutcome::Applied);
@@ -214,6 +235,9 @@ mod tests {
         store.ingest(&snap(5));
         store.ingest(&delta(6));
         assert_eq!(store.ingest(&delta(6)), IngestOutcome::Applied);
-        assert_eq!(store.gap_count(Exchange::Paper, &Symbol("BTC-USDT".into())), 0);
+        assert_eq!(
+            store.gap_count(Exchange::Paper, &Symbol("BTC-USDT".into())),
+            0
+        );
     }
 }

@@ -31,7 +31,9 @@ pub(crate) fn dec_from_value(v: &Value) -> Option<Price> {
             if s.eq_ignore_ascii_case("nan") || s.eq_ignore_ascii_case("inf") {
                 return Some(Decimal::ZERO);
             }
-            Decimal::from_str_exact(s).ok().or_else(|| Decimal::from_scientific(s).ok())
+            Decimal::from_str_exact(s)
+                .ok()
+                .or_else(|| Decimal::from_scientific(s).ok())
         }
         Value::Number(n) => Decimal::from_str_exact(&n.to_string()).ok(),
         _ => None,

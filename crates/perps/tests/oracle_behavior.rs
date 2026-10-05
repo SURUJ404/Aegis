@@ -105,7 +105,12 @@ fn publish(price: Price, observation_ts_ms: u64, sources: u8) -> EntryPayload {
     publish_over(price, observation_ts_ms, sources, false)
 }
 
-fn publish_over(price: Price, observation_ts_ms: u64, sources: u8, override_band: bool) -> EntryPayload {
+fn publish_over(
+    price: Price,
+    observation_ts_ms: u64,
+    sources: u8,
+    override_band: bool,
+) -> EntryPayload {
     EntryPayload::OraclePrice(OraclePriceCmd {
         price,
         observation_ts_ms,
@@ -199,7 +204,11 @@ fn oracle_price_takes_precedence_over_tick_marks() {
     assert_eq!(fx.sm.price_of(&m), Some(dec!(150)), "oracle wins");
 
     fx.apply(&m, 3_000, tick(dec!(180)));
-    assert_eq!(fx.sm.price_of(&m), Some(dec!(150)), "oracle stays authoritative");
+    assert_eq!(
+        fx.sm.price_of(&m),
+        Some(dec!(150)),
+        "oracle stays authoritative"
+    );
 }
 
 #[test]
@@ -212,8 +221,28 @@ fn equity_marks_positions_at_the_oracle_price() {
     fx.apply(&m, 1_100, publish(dec!(100), 1_090, 1));
 
     // sub2 rests the ask, sub1's bid crosses ⇒ sub1 long 1 @ 100.
-    fx.apply(&m, 1_200, place(Uuid::from_u128(1), Side::Ask, Some(dec!(100)), dec!(1), Some(2)));
-    fx.apply(&m, 1_300, place(Uuid::from_u128(2), Side::Bid, Some(dec!(100)), dec!(1), Some(1)));
+    fx.apply(
+        &m,
+        1_200,
+        place(
+            Uuid::from_u128(1),
+            Side::Ask,
+            Some(dec!(100)),
+            dec!(1),
+            Some(2),
+        ),
+    );
+    fx.apply(
+        &m,
+        1_300,
+        place(
+            Uuid::from_u128(2),
+            Side::Bid,
+            Some(dec!(100)),
+            dec!(1),
+            Some(1),
+        ),
+    );
     assert_eq!(fx.sm.position(1, &m), dec!(1));
     assert_eq!(fx.sm.equity_of(1), dec!(999.95)); // 1_000 − 100 − taker fee
 
@@ -262,7 +291,11 @@ fn deviation_rejects_publication_halts_market_and_blocks_places() {
 
     // …and placement works again.
     let id2 = Uuid::from_u128(11);
-    fx.apply(&m, 1_500, place(id2, Side::Bid, Some(dec!(101)), dec!(1), Some(0)));
+    fx.apply(
+        &m,
+        1_500,
+        place(id2, Side::Bid, Some(dec!(101)), dec!(1), Some(0)),
+    );
     assert!(fx.sm.clob().order(id2).is_some());
 }
 
@@ -286,12 +319,32 @@ fn halt_latches_once_and_counters_track_rejections() {
     assert_eq!(fx.sm.stats().oracle_rejected, 2);
 
     // A gated place adds one more gate rejection.
-    fx.apply(&m, 1_400, place(Uuid::from_u128(1), Side::Bid, Some(dec!(100)), dec!(1), Some(0)));
+    fx.apply(
+        &m,
+        1_400,
+        place(
+            Uuid::from_u128(1),
+            Side::Bid,
+            Some(dec!(100)),
+            dec!(1),
+            Some(0),
+        ),
+    );
     assert_eq!(fx.sm.stats().oracle_rejected, 3);
 
     // Clearing + a successful place add nothing to the rejection counters.
     fx.apply(&m, 1_500, publish(dec!(100.5), 1_490, 1));
-    fx.apply(&m, 1_600, place(Uuid::from_u128(2), Side::Bid, Some(dec!(100)), dec!(1), Some(0)));
+    fx.apply(
+        &m,
+        1_600,
+        place(
+            Uuid::from_u128(2),
+            Side::Bid,
+            Some(dec!(100)),
+            dec!(1),
+            Some(0),
+        ),
+    );
     assert_eq!(fx.sm.oracle().stats().published, 2);
     assert_eq!(fx.sm.oracle().stats().rejected, 2);
     assert_eq!(fx.sm.stats().oracle_rejected, 3);
@@ -331,9 +384,33 @@ fn blocked_entries_allowed_while_halted_are_cancel_and_transfer() {
 
     // Positions and the soon-cancelled ask open while the market is fresh.
     let id = Uuid::from_u128(42);
-    fx.apply(&m, 1_200, place(id, Side::Ask, Some(dec!(115)), dec!(1), Some(0)));
-    fx.apply(&m, 1_300, place(Uuid::from_u128(43), Side::Ask, Some(dec!(110)), dec!(1), Some(2)));
-    fx.apply(&m, 1_400, place(Uuid::from_u128(44), Side::Bid, Some(dec!(110)), dec!(1), Some(1)));
+    fx.apply(
+        &m,
+        1_200,
+        place(id, Side::Ask, Some(dec!(115)), dec!(1), Some(0)),
+    );
+    fx.apply(
+        &m,
+        1_300,
+        place(
+            Uuid::from_u128(43),
+            Side::Ask,
+            Some(dec!(110)),
+            dec!(1),
+            Some(2),
+        ),
+    );
+    fx.apply(
+        &m,
+        1_400,
+        place(
+            Uuid::from_u128(44),
+            Side::Bid,
+            Some(dec!(110)),
+            dec!(1),
+            Some(1),
+        ),
+    );
     assert_eq!(fx.sm.position(1, &m), dec!(1), "sub1 long via sub2's ask");
 
     fx.apply(&m, 1_500, publish(dec!(500), 1_490, 1)); // halt
@@ -385,8 +462,15 @@ fn stale_market_blocks_places_until_a_fresh_publication() {
     assert_eq!(published_price(&out), Some(dec!(100)));
 
     let id2 = Uuid::from_u128(2);
-    fx.apply(&m, 31_400, place(id2, Side::Bid, Some(dec!(100)), dec!(1), Some(0)));
-    assert!(fx.sm.clob().order(id2).is_some(), "fresh market accepts risk");
+    fx.apply(
+        &m,
+        31_400,
+        place(id2, Side::Bid, Some(dec!(100)), dec!(1), Some(0)),
+    );
+    assert!(
+        fx.sm.clob().order(id2).is_some(),
+        "fresh market accepts risk"
+    );
 }
 
 #[test]
@@ -397,8 +481,28 @@ fn liquidation_is_gated_by_staleness_and_halt() {
     fx.apply(&m, 1_010, transfer(1, dec!(1_000)));
     fx.apply(&m, 1_020, transfer(2, dec!(200)));
     fx.apply(&m, 1_100, publish(dec!(100), 1_090, 1));
-    fx.apply(&m, 1_200, place(Uuid::from_u128(1), Side::Ask, Some(dec!(100)), dec!(1), Some(2)));
-    fx.apply(&m, 1_300, place(Uuid::from_u128(2), Side::Bid, Some(dec!(100)), dec!(1), Some(1)));
+    fx.apply(
+        &m,
+        1_200,
+        place(
+            Uuid::from_u128(1),
+            Side::Ask,
+            Some(dec!(100)),
+            dec!(1),
+            Some(2),
+        ),
+    );
+    fx.apply(
+        &m,
+        1_300,
+        place(
+            Uuid::from_u128(2),
+            Side::Bid,
+            Some(dec!(100)),
+            dec!(1),
+            Some(1),
+        ),
+    );
     assert_eq!(fx.sm.position(1, &m), dec!(1));
 
     // Stale market (publish at 1_100): gate refuses before health runs.
@@ -443,7 +547,10 @@ fn settle_funding_is_gated_by_staleness() {
 
     fx.apply(&m, 31_300, publish(dec!(100), 31_299, 1));
     let out = fx.apply(&m, 31_310, settle_funding(dec!(0.001)));
-    assert!(matches!(out.as_slice(), [ApplyOutput::FundingSettled { .. }]));
+    assert!(matches!(
+        out.as_slice(),
+        [ApplyOutput::FundingSettled { .. }]
+    ));
 }
 
 // ---- validation rejections through the state machine ----
@@ -507,7 +614,10 @@ fn sequence_gap_is_still_the_only_hard_error_for_oracle_entries() {
         payload: publish(dec!(100), 990, 1),
     };
     match sm.apply(&e) {
-        Err(ApplyError::GlobalSeqGap { expected: 1, got: 5 }) => {}
+        Err(ApplyError::GlobalSeqGap {
+            expected: 1,
+            got: 5,
+        }) => {}
         other => panic!("expected GlobalSeqGap, got {other:?}"),
     }
 }
@@ -541,7 +651,11 @@ fn state_hash_reflects_oracle_price_and_publication_count() {
 
     let base = mk(None);
     assert_eq!(base, mk(None), "identical logs ⇒ identical hash");
-    assert_ne!(base, mk(Some(dec!(101))), "an extra publication must differ");
+    assert_ne!(
+        base,
+        mk(Some(dec!(101))),
+        "an extra publication must differ"
+    );
 }
 
 // ---- determinism / replay ----
@@ -562,16 +676,56 @@ fn oracle_log() -> Vec<LogEntry> {
     push(&mut lb, 1_020, transfer(2, dec!(200)));
     push(&mut lb, 1_100, publish(dec!(100), 1_090, 1));
     // sub2 rests the ask; sub1 crosses ⇒ sub1 long 1 @ 100.
-    push(&mut lb, 1_200, place(Uuid::from_u128(1), Side::Ask, Some(dec!(100)), dec!(1), Some(2)));
-    push(&mut lb, 1_300, place(Uuid::from_u128(2), Side::Bid, Some(dec!(100)), dec!(1), Some(1)));
+    push(
+        &mut lb,
+        1_200,
+        place(
+            Uuid::from_u128(1),
+            Side::Ask,
+            Some(dec!(100)),
+            dec!(1),
+            Some(2),
+        ),
+    );
+    push(
+        &mut lb,
+        1_300,
+        place(
+            Uuid::from_u128(2),
+            Side::Bid,
+            Some(dec!(100)),
+            dec!(1),
+            Some(1),
+        ),
+    );
     // sub0 rests an ask that will be cancelled while halted.
-    push(&mut lb, 1_400, place(Uuid::from_u128(3), Side::Ask, Some(dec!(110)), dec!(1), Some(0)));
+    push(
+        &mut lb,
+        1_400,
+        place(
+            Uuid::from_u128(3),
+            Side::Ask,
+            Some(dec!(110)),
+            dec!(1),
+            Some(0),
+        ),
+    );
     // Funding settles while fresh (350 ms after the accepted publish).
     push(&mut lb, 1_450, settle_funding(dec!(0.001)));
     // Deviation: rejected + halted.
     push(&mut lb, 1_500, publish(dec!(200), 1_490, 1));
     // New risk gated while halted.
-    push(&mut lb, 1_600, place(Uuid::from_u128(4), Side::Bid, Some(dec!(110)), dec!(1), Some(0)));
+    push(
+        &mut lb,
+        1_600,
+        place(
+            Uuid::from_u128(4),
+            Side::Bid,
+            Some(dec!(110)),
+            dec!(1),
+            Some(0),
+        ),
+    );
     // Risk-reducing cancel passes the gate.
     push(&mut lb, 1_700, cancel(Uuid::from_u128(3)));
     // Legacy tick mark — oracle still wins for price_of.
@@ -582,10 +736,30 @@ fn oracle_log() -> Vec<LogEntry> {
     push(&mut lb, 2_100, publish(dec!(130), 2_090, 1));
     push(&mut lb, 2_200, publish_over(dec!(120), 2_190, 1, true));
     // Stale place: 30.9 s after the last accepted publish.
-    push(&mut lb, 33_000, place(Uuid::from_u128(5), Side::Bid, Some(dec!(120)), dec!(1), Some(0)));
+    push(
+        &mut lb,
+        33_000,
+        place(
+            Uuid::from_u128(5),
+            Side::Bid,
+            Some(dec!(120)),
+            dec!(1),
+            Some(0),
+        ),
+    );
     // Fresh publish unblocks it (120 → 110 is in band).
     push(&mut lb, 33_100, publish(dec!(110), 33_099, 1));
-    push(&mut lb, 33_200, place(Uuid::from_u128(6), Side::Bid, Some(dec!(110)), dec!(1), Some(0)));
+    push(
+        &mut lb,
+        33_200,
+        place(
+            Uuid::from_u128(6),
+            Side::Bid,
+            Some(dec!(110)),
+            dec!(1),
+            Some(0),
+        ),
+    );
     // Legacy fill against the resting bid.
     push(
         &mut lb,
@@ -621,22 +795,37 @@ fn same_oracle_log_applied_twice_yields_identical_hashes_and_outputs() {
     assert_eq!(o1, o2);
 
     let flat: Vec<&ApplyOutput> = o1.iter().flatten().collect();
-    assert!(flat.iter().any(|o| matches!(o, ApplyOutput::OraclePublished { .. })));
+    assert!(flat
+        .iter()
+        .any(|o| matches!(o, ApplyOutput::OraclePublished { .. })));
     assert!(flat.iter().any(|o| matches!(
         o,
-        ApplyOutput::Rejected { reason: "oracle_deviation", .. }
+        ApplyOutput::Rejected {
+            reason: "oracle_deviation",
+            ..
+        }
     )));
     assert!(flat.iter().any(|o| matches!(
         o,
-        ApplyOutput::Rejected { reason: "oracle_halted", .. }
+        ApplyOutput::Rejected {
+            reason: "oracle_halted",
+            ..
+        }
     )));
     assert!(flat.iter().any(|o| matches!(
         o,
-        ApplyOutput::Rejected { reason: "oracle_stale", .. }
+        ApplyOutput::Rejected {
+            reason: "oracle_stale",
+            ..
+        }
     )));
     assert!(flat.iter().any(|o| matches!(o, ApplyOutput::Fill { .. })));
-    assert!(flat.iter().any(|o| matches!(o, ApplyOutput::FundingSettled { .. })));
-    assert!(flat.iter().any(|o| matches!(o, ApplyOutput::Cancelled { .. })));
+    assert!(flat
+        .iter()
+        .any(|o| matches!(o, ApplyOutput::FundingSettled { .. })));
+    assert!(flat
+        .iter()
+        .any(|o| matches!(o, ApplyOutput::Cancelled { .. })));
 }
 
 #[test]
@@ -696,7 +885,10 @@ fn encode_decode_roundtrip_preserves_hash_with_oracle_state() {
     for e in &entries {
         sm.apply(e).unwrap();
     }
-    assert!(sm.oracle().covered(&btc()), "test premise: oracle price set");
+    assert!(
+        sm.oracle().covered(&btc()),
+        "test premise: oracle price set"
+    );
 
     let bytes = sm.encode_state().expect("encode must handle the price map");
     let back = PerpsState::decode_state(&bytes).expect("decode");
@@ -736,5 +928,9 @@ fn snapshot_without_oracle_field_decodes_to_empty_book() {
     let back = PerpsState::decode_state(&stripped).expect("old snapshot decodes");
     assert!(!back.oracle().covered(&m));
     assert_eq!(back.oracle().stats().published, 0);
-    assert_eq!(back.state_hash(), sm.state_hash(), "defaults hash identically");
+    assert_eq!(
+        back.state_hash(),
+        sm.state_hash(),
+        "defaults hash identically"
+    );
 }

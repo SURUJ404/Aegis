@@ -59,12 +59,22 @@ impl BinanceDecoder {
     fn handle_depth(&mut self, data: &Value) -> anyhow::Result<()> {
         let mut bids = Vec::new();
         let mut asks = Vec::new();
-        for row in data.get("bids").and_then(Value::as_array).into_iter().flatten() {
+        for row in data
+            .get("bids")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+        {
             if let Some((px, qty)) = pair_at(row, 0) {
                 bids.push(OrderBookLevel::new(px, qty));
             }
         }
-        for row in data.get("asks").and_then(Value::as_array).into_iter().flatten() {
+        for row in data
+            .get("asks")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+        {
             if let Some((px, qty)) = pair_at(row, 0) {
                 asks.push(OrderBookLevel::new(px, qty));
             }
@@ -79,15 +89,18 @@ impl BinanceDecoder {
         let now = self.ts(ts);
         self.seq += 1;
         self.have_snapshot = true;
-        let _ = self.bus.market().try_publish(MarketEvent::Snapshot(OrderBookSnapshot {
-            venue: self.venue,
-            symbol: self.symbol.clone(),
-            sequence: self.seq,
-            event_ts: now,
-            exchange_ts: now,
-            bids,
-            asks,
-        }));
+        let _ = self
+            .bus
+            .market()
+            .try_publish(MarketEvent::Snapshot(OrderBookSnapshot {
+                venue: self.venue,
+                symbol: self.symbol.clone(),
+                sequence: self.seq,
+                event_ts: now,
+                exchange_ts: now,
+                bids,
+                asks,
+            }));
         Ok(())
     }
 
@@ -119,7 +132,10 @@ impl BinanceDecoder {
             event_ts: now,
             exchange_ts: now,
         };
-        let _ = self.bus.market().try_publish(MarketEvent::Trade(trade.clone()));
+        let _ = self
+            .bus
+            .market()
+            .try_publish(MarketEvent::Trade(trade.clone()));
         let _ = self.bus.market().try_publish(MarketEvent::Tick(MarketTick {
             venue: self.venue,
             symbol: self.symbol.clone(),
@@ -174,7 +190,9 @@ impl FeedDecoder for BinanceDecoder {
         let stream = value.get("stream").and_then(Value::as_str).unwrap_or("");
         if stream.contains("@trade") || data.get("e").and_then(Value::as_str) == Some("trade") {
             self.handle_trade(data)?;
-        } else if stream.contains("@depth") || data.get("e").and_then(Value::as_str) == Some("depthUpdate") {
+        } else if stream.contains("@depth")
+            || data.get("e").and_then(Value::as_str) == Some("depthUpdate")
+        {
             self.handle_depth(data)?;
         }
         Ok(true)

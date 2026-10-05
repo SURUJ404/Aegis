@@ -12,9 +12,9 @@ use std::sync::Arc;
 use lq_core::bus::EventBus;
 use lq_core::config::PaperSimConfig;
 use lq_core::event::MarketEvent;
+use lq_exchange::spec::InstrumentSpec;
 use lq_execution::paper::PaperExecutionVenue;
 use lq_execution::venue::VenueError;
-use lq_exchange::spec::InstrumentSpec;
 use lq_orderbook::book::OrderBook as LocalBook;
 use lq_types::{Exchange, Qty, Side, Symbol};
 use parking_lot::{Mutex, RwLock};
@@ -126,8 +126,8 @@ impl PaperExchange {
             }
 
             // Queue position: only a fraction of the order is at the front.
-            let effective_qty =
-                order.quantity * Decimal::from_f64_retain(self.cfg.queue_position.clamp(0.0, 1.0))
+            let effective_qty = order.quantity
+                * Decimal::from_f64_retain(self.cfg.queue_position.clamp(0.0, 1.0))
                     .unwrap_or_default();
             if effective_qty <= Qty::ZERO {
                 continue;
@@ -152,9 +152,7 @@ impl PaperExchange {
             if fill_qty <= Qty::ZERO {
                 continue;
             }
-            self.ven
-                .report_fill(id, limit, fill_qty, false)
-                .await?;
+            self.ven.report_fill(id, limit, fill_qty, false).await?;
             self.matched += 1;
         }
         Ok(())
@@ -192,7 +190,14 @@ impl PaperMarketBuilder {
             self.seed,
             true,
         ));
-        let exchange = PaperExchange::new(venue, symbol.clone(), spec, ven.clone(), self.cfg.clone(), self.seed);
+        let exchange = PaperExchange::new(
+            venue,
+            symbol.clone(),
+            spec,
+            ven.clone(),
+            self.cfg.clone(),
+            self.seed,
+        );
         exchange.connect_prices();
         (ven, exchange)
     }
@@ -240,9 +245,12 @@ mod tests {
             queue_position: 1.0,
             ..PaperSimConfig::default()
         };
-        let (ven, mut ex) = PaperMarketBuilder::new(cfg)
-            .with_seed(1)
-            .build(Exchange::Paper, Symbol("BTC-USDT".into()), spec(), bus);
+        let (ven, mut ex) = PaperMarketBuilder::new(cfg).with_seed(1).build(
+            Exchange::Paper,
+            Symbol("BTC-USDT".into()),
+            spec(),
+            bus,
+        );
         ex.on_market_event(&snapshot(&Symbol("BTC-USDT".into())))
             .await
             .unwrap();
@@ -273,9 +281,12 @@ mod tests {
             fill_fraction: 1.0,
             ..PaperSimConfig::default()
         };
-        let (ven, mut ex) = PaperMarketBuilder::new(cfg)
-            .with_seed(2)
-            .build(Exchange::Paper, Symbol("BTC-USDT".into()), spec(), bus);
+        let (ven, mut ex) = PaperMarketBuilder::new(cfg).with_seed(2).build(
+            Exchange::Paper,
+            Symbol("BTC-USDT".into()),
+            spec(),
+            bus,
+        );
         ex.on_market_event(&snapshot(&Symbol("BTC-USDT".into())))
             .await
             .unwrap();
@@ -305,9 +316,12 @@ mod tests {
             fill_fraction: 0.0,
             ..PaperSimConfig::default()
         };
-        let (ven, mut ex) = PaperMarketBuilder::new(cfg)
-            .with_seed(3)
-            .build(Exchange::Paper, Symbol("BTC-USDT".into()), spec(), bus);
+        let (ven, mut ex) = PaperMarketBuilder::new(cfg).with_seed(3).build(
+            Exchange::Paper,
+            Symbol("BTC-USDT".into()),
+            spec(),
+            bus,
+        );
         ex.on_market_event(&snapshot(&Symbol("BTC-USDT".into())))
             .await
             .unwrap();

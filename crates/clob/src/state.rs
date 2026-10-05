@@ -108,6 +108,12 @@ impl ClobState {
         self.orders.get(&id)
     }
 
+    /// Every order the machine holds, in order-id order (open and terminal).
+    /// Read-model access for snapshots and dashboards; replay is unaffected.
+    pub fn orders(&self) -> impl Iterator<Item = &ClobOrder> {
+        self.orders.values()
+    }
+
     pub fn book(&self, market: &MarketId) -> Option<&Book> {
         self.books.get(market)
     }

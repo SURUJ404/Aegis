@@ -47,11 +47,8 @@ impl PositionManager {
             }
             ExecutionEvent::Cancelled { order_id, ts, .. } => {
                 if let Some(mut o) = state.orders.get_mut(order_id) {
-                    if OrderStateMachine::transition(
-                        o.status,
-                        lq_types::OrderStatus::Cancelled,
-                    )
-                    .is_ok()
+                    if OrderStateMachine::transition(o.status, lq_types::OrderStatus::Cancelled)
+                        .is_ok()
                     {
                         o.status = lq_types::OrderStatus::Cancelled;
                         o.updated_at = *ts;
@@ -172,7 +169,14 @@ mod tests {
     fn fills_update_inventory_and_position() {
         let state = EngineState::new();
         let symbol = Symbol("BTC-USDT".into());
-        let mut o = Order::new(Exchange::Paper, symbol.clone(), Side::Bid, OrderType::Limit, Some(dec!(100.0)), dec!(1.0));
+        let mut o = Order::new(
+            Exchange::Paper,
+            symbol.clone(),
+            Side::Bid,
+            OrderType::Limit,
+            Some(dec!(100.0)),
+            dec!(1.0),
+        );
         o.status = lq_types::OrderStatus::Acknowledged;
         let oid = o.order_id;
         state.orders.insert(oid, o);
@@ -206,7 +210,14 @@ mod tests {
         assert_eq!(inv.realized_pnl, dec!(-0.1));
 
         // Close out the position at a profit.
-        let mut o = Order::new(Exchange::Paper, symbol.clone(), Side::Ask, OrderType::Limit, Some(dec!(101.0)), dec!(0.5));
+        let mut o = Order::new(
+            Exchange::Paper,
+            symbol.clone(),
+            Side::Ask,
+            OrderType::Limit,
+            Some(dec!(101.0)),
+            dec!(0.5),
+        );
         o.status = lq_types::OrderStatus::Acknowledged;
         let oid2 = o.order_id;
         state.orders.insert(oid2, o);
@@ -236,7 +247,14 @@ mod tests {
     fn cancelled_order_updates_state() {
         let state = EngineState::new();
         let symbol = Symbol("BTC-USDT".into());
-        let mut o = Order::new(Exchange::Paper, symbol, Side::Bid, OrderType::Limit, Some(dec!(100.0)), dec!(1.0));
+        let mut o = Order::new(
+            Exchange::Paper,
+            symbol,
+            Side::Bid,
+            OrderType::Limit,
+            Some(dec!(100.0)),
+            dec!(1.0),
+        );
         o.status = lq_types::OrderStatus::Acknowledged;
         let oid = o.order_id;
         state.orders.insert(oid, o);
@@ -254,4 +272,3 @@ mod tests {
         );
     }
 }
-

@@ -22,7 +22,7 @@ pub struct MarketParams {
 impl Default for MarketParams {
     fn default() -> Self {
         Self {
-            initial_margin_ratio: Decimal::new(1, 1),  // 10 %
+            initial_margin_ratio: Decimal::new(1, 1),     // 10 %
             maintenance_margin_ratio: Decimal::new(5, 2), // 5 %
             liquidation_fee_bps: Decimal::ZERO,
         }

@@ -102,19 +102,43 @@ impl Wal {
     /// CRC/decode failure of a **complete** record so mid-file corruption is not
     /// silently skipped.
     pub fn read_all(path: impl AsRef<Path>) -> Result<Vec<LogEntry>, WalError> {
+        let (records, _) = Self::read_from(path, 0, None)?;
+        Ok(records.into_iter().map(|(_, entry)| entry).collect())
+    }
+
+    /// Read up to `limit` intact records (`None` = to the end of the file)
+    /// starting at byte `offset`, which must be a record boundary — either `0`
+    /// or an offset this function returned earlier. Each record is paired with
+    /// the byte offset of its own header so the caller can seek back to it.
+    ///
+    /// Read-only: opens the file for reading and touches no writer state.
+    /// Framing, truncation and corruption behave exactly as in
+    /// [`Wal::read_all`].
+    pub fn read_from(
+        path: impl AsRef<Path>,
+        offset: u64,
+        limit: Option<usize>,
+    ) -> Result<(Vec<(u64, LogEntry)>, u64), WalError> {
         let path = path.as_ref();
         if !path.exists() {
-            return Ok(Vec::new());
+            return Ok((Vec::new(), offset));
         }
         let mut file = File::open(path)?;
-        let mut out = Vec::new();
-        let mut offset: u64 = 0;
         let file_len = file.metadata()?.len();
+        let mut out: Vec<(u64, LogEntry)> = Vec::new();
+        let mut offset = offset;
+        // `offset` may be a boundary returned by an earlier call: position the
+        // reader there before the first header read.
+        file.seek(SeekFrom::Start(offset))?;
 
         loop {
+            if limit.is_some_and(|n| out.len() >= n) {
+                break;
+            }
             if offset + HEADER_LEN as u64 > file_len {
                 break; // truncated header → clean stop
             }
+            let record_offset = offset;
             let mut header = [0u8; HEADER_LEN];
             file.read_exact(&mut header)?;
             let len = u32::from_le_bytes(header[0..4].try_into().unwrap());
@@ -130,17 +154,19 @@ impl Wal {
             file.read_exact(&mut payload)?;
             let actual = crc32fast::hash(&payload);
             if actual != crc {
-                return Err(WalError::CrcMismatch { offset });
+                return Err(WalError::CrcMismatch {
+                    offset: record_offset,
+                });
             }
             let entry = decode_entry(&payload).map_err(|e| WalError::Decode {
-                offset,
+                offset: record_offset,
                 detail: e.to_string(),
             })?;
-            out.push(entry);
+            out.push((record_offset, entry));
             offset = payload_start + len as u64;
             file.seek(SeekFrom::Start(offset))?;
         }
-        Ok(out)
+        Ok((out, offset))
     }
 
     /// Truncate the file to `len` bytes (used when discarding a corrupt tail
@@ -236,6 +262,31 @@ mod tests {
         assert_eq!(all.len(), 5);
         assert_eq!(all[0].global_seq, 1);
         assert_eq!(all[4].global_seq, 5);
+    }
+
+    #[test]
+    fn read_from_mid_file_resumes_at_that_record() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("wal.log");
+        let mut wal = Wal::open(&path).unwrap();
+        for i in 1..=5 {
+            wal.append(&entry(i)).unwrap();
+        }
+        let (first, after_first) = Wal::read_from(&path, 0, Some(1)).unwrap();
+        assert_eq!(first[0].1.global_seq, 1);
+        // Resuming from a boundary the previous call returned must start at
+        // that record, not back at byte 0.
+        let (rest, end) = Wal::read_from(&path, after_first, None).unwrap();
+        let seqs: Vec<u64> = rest.iter().map(|(_, e)| e.global_seq).collect();
+        assert_eq!(seqs, vec![2, 3, 4, 5]);
+        assert_eq!(end, std::fs::metadata(&path).unwrap().len());
+        // Same for a boundary in the middle of the file.
+        let (first_three, _) = Wal::read_from(&path, 0, Some(3)).unwrap();
+        let offset_of_three = first_three[2].0;
+        assert!(offset_of_three > 0);
+        let (from_three, _) = Wal::read_from(&path, offset_of_three, Some(1)).unwrap();
+        assert_eq!(from_three[0].1.global_seq, 3);
+        assert_eq!(from_three[0].0, offset_of_three);
     }
 
     #[test]

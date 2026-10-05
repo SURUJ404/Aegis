@@ -12,12 +12,8 @@ pub mod models;
 pub mod state;
 
 pub use bus::{EventBus, PublishResult, Topic};
-pub use config::{
-    EngineConfig, MarketMakingConfig, PaperSimConfig, RiskConfig, StrategyConfig,
-};
-pub use event::{
-    ControlEvent, ExecutionEvent, MarketEvent, MarketEventKind, PublishStats,
-};
+pub use config::{EngineConfig, MarketMakingConfig, PaperSimConfig, RiskConfig, StrategyConfig};
+pub use event::{ControlEvent, ExecutionEvent, MarketEvent, MarketEventKind, PublishStats};
 pub use models::{
     Execution, FillEvent, Inventory, LatencyMeasurement, LatencyRecorder, LatencyStage,
     MarketOrderSignal, MarketRegime, MarketState, MarketTick, Order, OrderBookDelta,

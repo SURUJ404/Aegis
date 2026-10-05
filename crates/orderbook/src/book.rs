@@ -57,7 +57,10 @@ pub struct OrderBook {
 pub enum DeltaOutcome {
     Applied,
     /// Sequence gap: the delta was newer than expected. Book is now stale.
-    Gap { expected: u64, got: u64 },
+    Gap {
+        expected: u64,
+        got: u64,
+    },
     /// Duplicate or out-of-order sequence; safely ignored.
     Duplicate,
     /// No book yet (snapshot not applied).
@@ -95,10 +98,12 @@ impl OrderBook {
         self.bids.clear();
         self.asks.clear();
         for level in &snap.bids {
-            self.bids.insert(self.to_ticks(level.price), qty_to_u64(level.qty));
+            self.bids
+                .insert(self.to_ticks(level.price), qty_to_u64(level.qty));
         }
         for level in &snap.asks {
-            self.asks.insert(self.to_ticks(level.price), qty_to_u64(level.qty));
+            self.asks
+                .insert(self.to_ticks(level.price), qty_to_u64(level.qty));
         }
         self.sequence = snap.sequence;
         self.last_event_ts = snap.event_ts;
@@ -275,7 +280,11 @@ impl OrderBook {
         if remaining > Decimal::ZERO {
             return None;
         }
-        Some(if qty.is_zero() { Decimal::ZERO } else { cost / qty })
+        Some(if qty.is_zero() {
+            Decimal::ZERO
+        } else {
+            cost / qty
+        })
     }
 
     /// Snapshot for observability/resync.
@@ -430,10 +439,7 @@ mod tests {
         );
         // Gap left sequence unchanged; a duplicate is still detected relative
         // to the pre-gap sequence.
-        assert_eq!(
-            b.apply_delta(&delta(100, vec![])),
-            DeltaOutcome::Duplicate
-        );
+        assert_eq!(b.apply_delta(&delta(100, vec![])), DeltaOutcome::Duplicate);
     }
 
     #[test]
@@ -461,8 +467,7 @@ mod tests {
         let v = b.vwap(Side::Ask, dec!(160.0)).unwrap();
         assert!(v > dec!(100.1) && v < dec!(100.2));
         // Exact: 160 / (1.5 + (160 - 150.15) / 100.2)
-        let expected = dec!(160.0)
-            / (dec!(1.5) + (dec!(160.0) - dec!(150.15)) / dec!(100.2));
+        let expected = dec!(160.0) / (dec!(1.5) + (dec!(160.0) - dec!(150.15)) / dec!(100.2));
         assert_eq!(v, expected);
     }
 

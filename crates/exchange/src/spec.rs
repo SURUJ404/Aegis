@@ -59,10 +59,7 @@ impl InstrumentSpec {
     pub fn validate_qty(&self, qty: Qty) -> bool {
         qty > Qty::ZERO
             && qty >= self.min_qty
-            && self
-                .max_qty
-                .map(|m| qty <= m)
-                .unwrap_or(true)
+            && self.max_qty.map(|m| qty <= m).unwrap_or(true)
             && (qty / self.lot_size).fract().is_zero()
     }
 }
@@ -73,7 +70,10 @@ mod tests {
 
     #[test]
     fn tick_conversion_round_trips() {
-        let spec = InstrumentSpec::new(rust_decimal_macros::dec!(0.1), rust_decimal_macros::dec!(0.01));
+        let spec = InstrumentSpec::new(
+            rust_decimal_macros::dec!(0.1),
+            rust_decimal_macros::dec!(0.01),
+        );
         let price = rust_decimal_macros::dec!(65432.1);
         let ticks = spec.to_ticks(price);
         assert_eq!(spec.from_ticks(ticks), price);
@@ -81,7 +81,10 @@ mod tests {
 
     #[test]
     fn to_ticks_rounds_to_nearest() {
-        let spec = InstrumentSpec::new(rust_decimal_macros::dec!(0.1), rust_decimal_macros::dec!(0.01));
+        let spec = InstrumentSpec::new(
+            rust_decimal_macros::dec!(0.1),
+            rust_decimal_macros::dec!(0.01),
+        );
         assert_eq!(spec.to_ticks(rust_decimal_macros::dec!(100.15)), 1002);
         assert_eq!(spec.from_ticks(1002), rust_decimal_macros::dec!(100.2));
         assert_eq!(spec.to_ticks(rust_decimal_macros::dec!(100.12)), 1001);
@@ -89,7 +92,10 @@ mod tests {
 
     #[test]
     fn quantity_validation() {
-        let spec = InstrumentSpec::new(rust_decimal_macros::dec!(0.1), rust_decimal_macros::dec!(0.01));
+        let spec = InstrumentSpec::new(
+            rust_decimal_macros::dec!(0.1),
+            rust_decimal_macros::dec!(0.01),
+        );
         assert!(spec.validate_qty(rust_decimal_macros::dec!(0.01)));
         assert!(!spec.validate_qty(rust_decimal_macros::dec!(0.005)));
     }

@@ -112,7 +112,9 @@ pub async fn run_ws(
 
         // Signal resync expectation after a reconnect.
         if attempt > 0 {
-            let _ = bus.market().try_publish(decoder.status_event(FeedStatus::Resync));
+            let _ = bus
+                .market()
+                .try_publish(decoder.status_event(FeedStatus::Resync));
         }
         last_seen.store(TimestampMs::now().as_u64(), AtomicOrdering::Relaxed);
         stale.store(false, AtomicOrdering::Relaxed);
@@ -198,7 +200,9 @@ pub async fn run_ws(
         };
 
         watchdog.abort();
-        let _ = bus.market().try_publish(decoder.status_event(FeedStatus::Disconnected));
+        let _ = bus
+            .market()
+            .try_publish(decoder.status_event(FeedStatus::Disconnected));
         tracing::warn!(feed = decoder.name(), reason = %reason, "feed disconnected");
 
         backoff_sleep(attempt, &cfg).await;
@@ -207,7 +211,9 @@ pub async fn run_ws(
 }
 
 async fn backoff_sleep(attempt: u32, cfg: &WsConfig) {
-    let exp = cfg.reconnect_base_ms.saturating_mul(1u64 << attempt.min(10));
+    let exp = cfg
+        .reconnect_base_ms
+        .saturating_mul(1u64 << attempt.min(10));
     let delay = exp.min(cfg.reconnect_max_ms);
     tokio::time::sleep(Duration::from_millis(delay)).await;
 }

@@ -5,9 +5,9 @@ use std::hint::black_box;
 use criterion::{criterion_group, criterion_main, Criterion};
 use lq_core::config::MarketMakingConfig;
 use lq_core::models::{Inventory, MarketRegime, MarketState};
-use lq_strategy::StrategyContext;
-use lq_strategy::Strategy;
 use lq_strategy::MarketMakingStrategy;
+use lq_strategy::Strategy;
+use lq_strategy::StrategyContext;
 use lq_types::{Exchange, Symbol, TimestampMs};
 use rust_decimal_macros::dec;
 

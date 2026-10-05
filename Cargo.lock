@@ -2808,16 +2808,21 @@ name = "lq-api"
 version = "0.1.0"
 dependencies = [
  "axum 0.8.9",
+ "lq-clob",
  "lq-core",
  "lq-execution",
+ "lq-orderbook",
+ "lq-sequencer",
  "lq-telemetry",
  "lq-types",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror 2.0.20",
  "tokio",
  "tower 0.5.3",
  "tracing",
+ "uuid",
 ]
 
 [[package]]
@@ -8158,6 +8163,7 @@ dependencies = [
  "lq-orderbook",
  "lq-persistence",
  "lq-risk",
+ "lq-sequencer",
  "lq-simulator",
  "lq-strategy",
  "lq-telemetry",

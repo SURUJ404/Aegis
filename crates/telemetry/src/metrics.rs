@@ -6,11 +6,11 @@
 
 use std::sync::{Arc, Mutex};
 
+use axum::body::Body;
 use axum::extract::State;
 use axum::http::{header, Response, StatusCode};
 use axum::routing::get;
 use axum::Router;
-use axum::body::Body;
 use lq_core::bus::EventBus;
 use lq_core::event::{ExecutionEvent, MarketEvent, MarketEventKind};
 use lq_core::models::LatencyMeasurement;
@@ -24,8 +24,22 @@ use prometheus::{
 /// Nanosecond histogram buckets covering sub-microsecond decode times through
 /// multi-millisecond end-to-end round trips.
 pub const LATENCY_BUCKETS: &[f64] = &[
-    1.0, 5.0, 10.0, 25.0, 50.0, 100.0, 250.0, 500.0, 1_000.0, 2_500.0, 5_000.0, 10_000.0,
-    50_000.0, 100_000.0, 500_000.0, 1_000_000.0,
+    1.0,
+    5.0,
+    10.0,
+    25.0,
+    50.0,
+    100.0,
+    250.0,
+    500.0,
+    1_000.0,
+    2_500.0,
+    5_000.0,
+    10_000.0,
+    50_000.0,
+    100_000.0,
+    500_000.0,
+    1_000_000.0,
 ];
 
 #[derive(Debug, thiserror::Error)]
@@ -78,22 +92,20 @@ impl Metrics {
             &["kind"],
         )
         .expect("metric");
-        let fills_total = IntCounterVec::new(
-            Opts::new("lq_fills_total", "Fills by venue."),
-            &["venue"],
-        )
-        .expect("metric");
+        let fills_total =
+            IntCounterVec::new(Opts::new("lq_fills_total", "Fills by venue."), &["venue"])
+                .expect("metric");
         let fees_total = prometheus::GaugeVec::new(
-            Opts::new("lq_fees_total", "Cumulative fees (rebates negative) by venue."),
+            Opts::new(
+                "lq_fees_total",
+                "Cumulative fees (rebates negative) by venue.",
+            ),
             &["venue"],
         )
         .expect("metric");
         let latency = HistogramVec::new(
-            HistogramOpts::new(
-                "lq_latency_ns",
-                "Pipeline stage latency in nanoseconds.",
-            )
-            .buckets(LATENCY_BUCKETS.to_vec()),
+            HistogramOpts::new("lq_latency_ns", "Pipeline stage latency in nanoseconds.")
+                .buckets(LATENCY_BUCKETS.to_vec()),
             &["stage"],
         )
         .expect("metric");
@@ -103,7 +115,10 @@ impl Metrics {
         )
         .expect("metric");
         let net_position = prometheus::GaugeVec::new(
-            Opts::new("lq_net_position", "Signed net position by venue and symbol."),
+            Opts::new(
+                "lq_net_position",
+                "Signed net position by venue and symbol.",
+            ),
             &["venue", "symbol"],
         )
         .expect("metric");
@@ -117,8 +132,8 @@ impl Metrics {
             &["symbol"],
         )
         .expect("metric");
-        let halted = IntGaugeVec::new(Opts::new("lq_halted", "Kill switch state."), &[])
-            .expect("metric");
+        let halted =
+            IntGaugeVec::new(Opts::new("lq_halted", "Kill switch state."), &[]).expect("metric");
         let strategy_running = IntGaugeVec::new(
             Opts::new("lq_strategy_running", "Strategy enabled."),
             &["strategy"],
@@ -240,7 +255,9 @@ impl Metrics {
 
     /// Record latency for a named pipeline stage directly (stage label + nanos).
     pub fn record_pipeline_stage(&self, stage: &str, nanos: u64) {
-        self.latency.with_label_values(&[stage]).observe(nanos as f64);
+        self.latency
+            .with_label_values(&[stage])
+            .observe(nanos as f64);
     }
 
     /// Count an event by source label.
@@ -291,7 +308,9 @@ impl Metrics {
         }
 
         let risk = state.risk_snapshot();
-        self.halted.with_label_values(&[]).set(i64::from(risk.halted));
+        self.halted
+            .with_label_values(&[])
+            .set(i64::from(risk.halted));
         self.strategy_running
             .with_label_values(&["market_making"])
             .set(i64::from(state.is_strategy_running()));
@@ -390,7 +409,7 @@ mod tests {
     use super::*;
     use lq_core::bus::EventBus;
     use lq_core::event::FeedStatus;
-    use lq_core::models::{FillEvent, OrderBookSnapshot, OrderBookLevel};
+    use lq_core::models::{FillEvent, OrderBookLevel, OrderBookSnapshot};
     use lq_types::{Exchange, Side, Symbol, TimestampMs};
     use rust_decimal_macros::dec;
     use uuid::Uuid;

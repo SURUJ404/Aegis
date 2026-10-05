@@ -34,7 +34,11 @@ pub struct LogsSubscribeClient {
     config: SolanaWsConfig,
     market: SolanaMarket,
     decoder: crate::decoder::SolanaEventDecoder,
-    ws_stream: Option<tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>>,
+    ws_stream: Option<
+        tokio_tungstenite::WebSocketStream<
+            tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+        >,
+    >,
     subscription_id: Option<u64>,
 }
 
@@ -66,7 +70,11 @@ impl LogsSubscribeClient {
             ]
         });
 
-        self.ws_stream.as_mut().unwrap().send(Message::Text(sub_msg.to_string())).await?;
+        self.ws_stream
+            .as_mut()
+            .unwrap()
+            .send(Message::Text(sub_msg.to_string()))
+            .await?;
         info!(program = %program_id, "Subscribed to logs");
 
         // Wait for subscription confirmation
@@ -95,7 +103,10 @@ impl crate::SolanaEventSource for LogsSubscribeClient {
     async fn next_event(&mut self) -> Result<NormalizedSolanaEvent> {
         loop {
             let msg = {
-                let ws = self.ws_stream.as_mut().ok_or_else(|| anyhow::anyhow!("Not connected"))?;
+                let ws = self
+                    .ws_stream
+                    .as_mut()
+                    .ok_or_else(|| anyhow::anyhow!("Not connected"))?;
                 match ws.next().await {
                     Some(Ok(msg)) => msg,
                     Some(Err(e)) => return Err(anyhow::anyhow!("WebSocket error: {}", e)),
@@ -144,9 +155,15 @@ impl crate::SolanaEventSource for LogsSubscribeClient {
 impl LogsSubscribeClient {
     fn parse_log_notification(&self, text: &str) -> Result<Option<NormalizedSolanaEvent>> {
         let value: serde_json::Value = serde_json::from_str(text)?;
-        let params = value.get("params").and_then(|p| p.get("result")).and_then(|r| r.get("value"));
+        let params = value
+            .get("params")
+            .and_then(|p| p.get("result"))
+            .and_then(|r| r.get("value"));
 
-        let Some(logs) = params.and_then(|v| v.get("logs")).and_then(|l| l.as_array()) else {
+        let Some(logs) = params
+            .and_then(|v| v.get("logs"))
+            .and_then(|l| l.as_array())
+        else {
             return Ok(None);
         };
 
@@ -161,9 +178,15 @@ impl LogsSubscribeClient {
             .and_then(|s| s.as_u64())
             .unwrap_or(0);
 
-        let log_strings: Vec<String> = logs.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect();
+        let log_strings: Vec<String> = logs
+            .iter()
+            .filter_map(|v| v.as_str().map(|s| s.to_string()))
+            .collect();
 
-        if let Some(event) = self.decoder.decode_transaction_log(slot, &signature, &log_strings)? {
+        if let Some(event) = self
+            .decoder
+            .decode_transaction_log(slot, &signature, &log_strings)?
+        {
             return Ok(Some(event));
         }
 
@@ -183,16 +206,21 @@ pub async fn run_logs_feed<S: crate::SolanaEventSource>(
     loop {
         if let Err(e) = client.connect().await {
             error!(error = %e, "LogsSubscribe connect failed");
-            tokio::time::sleep(tokio::time::Duration::from_millis(client.reconnect_base_ms())).await;
+            tokio::time::sleep(tokio::time::Duration::from_millis(
+                client.reconnect_base_ms(),
+            ))
+            .await;
             continue;
         }
 
-        let _ = bus.market().try_publish(lq_core::event::MarketEvent::Status {
-            venue,
-            symbol: symbol.clone(),
-            status: FeedStatus::Healthy,
-            ts: TimestampMs::now(),
-        });
+        let _ = bus
+            .market()
+            .try_publish(lq_core::event::MarketEvent::Status {
+                venue,
+                symbol: symbol.clone(),
+                status: FeedStatus::Healthy,
+                ts: TimestampMs::now(),
+            });
 
         while let Ok(event) = client.next_event().await {
             let normalized = event.to_market_event(venue);
@@ -200,13 +228,18 @@ pub async fn run_logs_feed<S: crate::SolanaEventSource>(
         }
 
         warn!("LogsSubscribe disconnected, reconnecting...");
-        let _ = bus.market().try_publish(lq_core::event::MarketEvent::Status {
-            venue,
-            symbol: symbol.clone(),
-            status: FeedStatus::Disconnected,
-            ts: TimestampMs::now(),
-        });
+        let _ = bus
+            .market()
+            .try_publish(lq_core::event::MarketEvent::Status {
+                venue,
+                symbol: symbol.clone(),
+                status: FeedStatus::Disconnected,
+                ts: TimestampMs::now(),
+            });
 
-        tokio::time::sleep(tokio::time::Duration::from_millis(client.reconnect_base_ms())).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(
+            client.reconnect_base_ms(),
+        ))
+        .await;
     }
 }

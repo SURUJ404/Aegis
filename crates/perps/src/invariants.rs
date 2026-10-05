@@ -25,7 +25,10 @@ pub enum InvariantViolation {
     /// Below-maintenance subaccount missing from the pending liquidation set.
     UnflaggedBelowMaintenance { subaccount: u64 },
     /// Pending set disagrees with a fresh recomputation (stale flag).
-    FlagSetMismatch { expected: Vec<u64>, actual: Vec<u64> },
+    FlagSetMismatch {
+        expected: Vec<u64>,
+        actual: Vec<u64>,
+    },
 }
 
 impl fmt::Display for InvariantViolation {

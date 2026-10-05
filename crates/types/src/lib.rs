@@ -16,6 +16,6 @@ pub use exchange::{Exchange, VenueInstrument};
 pub use instrument::{Instrument, Symbol};
 pub use market::{ExecutionType, MarketEventType};
 pub use money::{Amount, Money, Price, Qty, QUOTE_DECIMALS};
-pub use orders::{OrderType, OrderStatus, TimeInForce};
+pub use orders::{OrderStatus, OrderType, TimeInForce};
 pub use side::Side;
 pub use time::TimestampMs;

@@ -106,14 +106,12 @@ impl Strategy for MarketMakingStrategy {
 
         // Quote refresh throttle.
         if let Some(last) = self.last_quote_ts {
-            if state.event_ts.as_u64().saturating_sub(last.as_u64())
-                < self.cfg.quote_refresh_ms
-            {
+            if state.event_ts.as_u64().saturating_sub(last.as_u64()) < self.cfg.quote_refresh_ms {
                 return StrategyDecision::Hold;
             }
         }
 
-let inv_qty = ctx
+        let inv_qty = ctx
             .inventory
             .as_ref()
             .map(|i| i.net_qty)
@@ -262,11 +260,7 @@ mod tests {
 
     #[test]
     fn flat_inventory_symmetric_quote() {
-        let mut s = MarketMakingStrategy::new(
-            Symbol("BTC-USDT".into()),
-            Exchange::Paper,
-            cfg(),
-        );
+        let mut s = MarketMakingStrategy::new(Symbol("BTC-USDT".into()), Exchange::Paper, cfg());
         let market = state();
         let decision = s.on_market_state(&ctx(&market, dec!(0.0), true, false));
         match decision {
@@ -283,11 +277,7 @@ mod tests {
 
     #[test]
     fn long_inventory_skews_ask_in() {
-        let mut s = MarketMakingStrategy::new(
-            Symbol("BTC-USDT".into()),
-            Exchange::Paper,
-            cfg(),
-        );
+        let mut s = MarketMakingStrategy::new(Symbol("BTC-USDT".into()), Exchange::Paper, cfg());
         let market = state();
         // 100% of max inventory: sk = 1.0
         let decision = s.on_market_state(&ctx(&market, dec!(0.5), true, false));
@@ -304,11 +294,7 @@ mod tests {
 
     #[test]
     fn short_inventory_skews_bid_in() {
-        let mut s = MarketMakingStrategy::new(
-            Symbol("BTC-USDT".into()),
-            Exchange::Paper,
-            cfg(),
-        );
+        let mut s = MarketMakingStrategy::new(Symbol("BTC-USDT".into()), Exchange::Paper, cfg());
         let market = state();
         let decision = s.on_market_state(&ctx(&market, dec!(-0.25), true, false));
         match decision {
@@ -325,11 +311,7 @@ mod tests {
 
     #[test]
     fn stands_down_when_halted() {
-        let mut s = MarketMakingStrategy::new(
-            Symbol("BTC-USDT".into()),
-            Exchange::Paper,
-            cfg(),
-        );
+        let mut s = MarketMakingStrategy::new(Symbol("BTC-USDT".into()), Exchange::Paper, cfg());
         let market = state();
         match s.on_market_state(&ctx(&market, dec!(0.0), true, true)) {
             StrategyDecision::StandDown { .. } => {}
@@ -339,11 +321,7 @@ mod tests {
 
     #[test]
     fn stands_down_on_stale_market() {
-        let mut s = MarketMakingStrategy::new(
-            Symbol("BTC-USDT".into()),
-            Exchange::Paper,
-            cfg(),
-        );
+        let mut s = MarketMakingStrategy::new(Symbol("BTC-USDT".into()), Exchange::Paper, cfg());
         let mut market = state();
         market.stale = true;
         match s.on_market_state(&ctx(&market, dec!(0.0), true, false)) {
@@ -358,4 +336,3 @@ mod tests {
         let _: Side = Side::Bid;
     }
 }
-

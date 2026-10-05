@@ -57,7 +57,12 @@ pub struct MarketStateEngine {
 }
 
 impl MarketStateEngine {
-    pub fn new(venue: Exchange, symbol: Symbol, _spec: InstrumentSpec, cfg: AnalyticsConfig) -> Self {
+    pub fn new(
+        venue: Exchange,
+        symbol: Symbol,
+        _spec: InstrumentSpec,
+        cfg: AnalyticsConfig,
+    ) -> Self {
         Self {
             venue,
             symbol,
@@ -287,12 +292,24 @@ mod tests {
             event_ts: TimestampMs(1),
             exchange_ts: TimestampMs(1),
             bids: vec![
-                OrderBookLevel { price: dec!(100.0), qty: dec!(2.0) },
-                OrderBookLevel { price: dec!(99.9), qty: dec!(1.0) },
+                OrderBookLevel {
+                    price: dec!(100.0),
+                    qty: dec!(2.0),
+                },
+                OrderBookLevel {
+                    price: dec!(99.9),
+                    qty: dec!(1.0),
+                },
             ],
             asks: vec![
-                OrderBookLevel { price: dec!(100.1), qty: dec!(1.0) },
-                OrderBookLevel { price: dec!(100.2), qty: dec!(2.0) },
+                OrderBookLevel {
+                    price: dec!(100.1),
+                    qty: dec!(1.0),
+                },
+                OrderBookLevel {
+                    price: dec!(100.2),
+                    qty: dec!(2.0),
+                },
             ],
         });
         b
@@ -336,10 +353,19 @@ mod tests {
             event_ts: TimestampMs(1),
             exchange_ts: TimestampMs(1),
             bids: vec![
-                OrderBookLevel { price: dec!(100.0), qty: dec!(10.0) },
-                OrderBookLevel { price: dec!(99.9), qty: dec!(5.0) },
+                OrderBookLevel {
+                    price: dec!(100.0),
+                    qty: dec!(10.0),
+                },
+                OrderBookLevel {
+                    price: dec!(99.9),
+                    qty: dec!(5.0),
+                },
             ],
-            asks: vec![OrderBookLevel { price: dec!(100.1), qty: dec!(0.5) }],
+            asks: vec![OrderBookLevel {
+                price: dec!(100.1),
+                qty: dec!(0.5),
+            }],
         });
         let s = engine.compute(&b, TimestampMs(1_000));
         assert!(s.orderbook_imbalance > 0.5);

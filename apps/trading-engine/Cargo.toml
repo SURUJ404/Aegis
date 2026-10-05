@@ -22,6 +22,7 @@ lq-simulator = { path = "../../crates/simulator" }
 lq-telemetry = { path = "../../crates/telemetry" }
 lq-persistence = { path = "../../crates/persistence" }
 lq-api = { path = "../../crates/api" }
+lq-sequencer = { path = "../../crates/sequencer" }
 tokio = { workspace = true }
 tracing = { workspace = true }
 anyhow = { workspace = true }

@@ -133,7 +133,10 @@ mod tests {
 
     #[test]
     fn latency_stage_labels() {
-        assert_eq!(LatencyStage::WebSocketReceive.as_label(), "websocket_receive");
+        assert_eq!(
+            LatencyStage::WebSocketReceive.as_label(),
+            "websocket_receive"
+        );
         assert_eq!(LatencyStage::MarginCheck.as_label(), "margin_check");
         assert_eq!(LatencyStage::Liquidation.as_label(), "liquidation");
         assert_eq!(LatencyStage::EndToEnd.as_label(), "end_to_end");

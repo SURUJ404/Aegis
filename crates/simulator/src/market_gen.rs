@@ -50,7 +50,7 @@ pub struct SyntheticDataConfig {
     pub max_move_ticks: u64,
     /// Probability each book tick also prints a trade.
     pub trade_prob: f64,
-/// Trade size in base units.
+    /// Trade size in base units.
     pub trade_qty: Qty,
     /// Re-emit a full snapshot every N ticks so a missed boot snapshot (or a
     /// dropped delta) self-heals. 0 disables periodic resync.
@@ -155,7 +155,11 @@ impl SyntheticMarketData {
             bids.push((bid_tick, self.level_qty()));
             asks.push((ask_tick, self.level_qty()));
         }
-        LevelSet { bids, asks, mid_tick: mid }
+        LevelSet {
+            bids,
+            asks,
+            mid_tick: mid,
+        }
     }
 
     fn diff_changes(
@@ -201,7 +205,8 @@ impl SyntheticMarketData {
         let step = self.step_ticks(current.mid_tick);
         let move_ticks = self.rng.gen_range(0..=self.cfg.max_move_ticks) as i64;
         let dir: i64 = if self.rng.gen::<bool>() { 1 } else { -1 };
-        let new_mid = (current.mid_tick as i64 + dir * move_ticks * step as i64).max(1) as PriceTick;
+        let new_mid =
+            (current.mid_tick as i64 + dir * move_ticks * step as i64).max(1) as PriceTick;
 
         let next = self.target_levels(new_mid);
         self.seq += 1;
@@ -224,7 +229,11 @@ impl SyntheticMarketData {
 
         // Occasional aggressive trade at the touch.
         if self.rng.gen::<f64>() < self.cfg.trade_prob {
-            let aggressor = if self.rng.gen::<bool>() { Side::Bid } else { Side::Ask };
+            let aggressor = if self.rng.gen::<bool>() {
+                Side::Bid
+            } else {
+                Side::Ask
+            };
             let price = match aggressor {
                 Side::Bid => best_bid,
                 Side::Ask => best_ask,
@@ -280,7 +289,7 @@ impl SyntheticMarketData {
         })
     }
 
-/// Produce the next tick's events (delta + optional trade).
+    /// Produce the next tick's events (delta + optional trade).
     pub fn next_events(&mut self, now: TimestampMs) -> Vec<MarketEvent> {
         self.next_delta(now)
     }
@@ -343,7 +352,7 @@ impl SimulatedFeed {
             let venue = gen.venue;
             let symbol = gen.symbol.clone();
             let _ = bus.market().try_publish(gen.initial_snapshot(now));
-let _ = bus.market().try_publish(MarketEvent::Status {
+            let _ = bus.market().try_publish(MarketEvent::Status {
                 venue,
                 symbol: symbol.clone(),
                 status: FeedStatus::Healthy,
@@ -431,4 +440,3 @@ mod tests {
         }
     }
 }
-
