@@ -36,6 +36,7 @@ Features marked **[IMPLEMENTED]** are working and tested. Features marked **[PLA
 | Event-sourced sequencer (`lq-sequencer`: WAL, snapshot, replay, state hash) | **[IMPLEMENTED]** |
 | Central limit order book (`lq-clob`: price-time match, TIF, STP, cancel/replace, ST expiry) | **[IMPLEMENTED]** |
 | Perpetuals margin & liquidation (`lq-perps`) | **[IMPLEMENTED]** |
+| Multi-venue oracle with circuit breakers (`lq-oracle`) | **[IMPLEMENTED]** |
 | Signed order gateway (ed25519) | **[PLANNED]** |
 | Raft replication | **[PLANNED]** |
 | Live trading mode | **[PLANNED]** |
@@ -98,6 +99,10 @@ Features marked **[IMPLEMENTED]** are working and tested. Features marked **[PLA
 | `lq-persistence` | `PostgresStore`, `RedisHotState`, `PersistenceSink` |
 | `lq-telemetry` | `Metrics`, `MetricsServer`, structured tracing |
 | `lq-api` | Axum router, auth, control-plane handlers |
+| `lq-sequencer` | Event-sourced log: WAL, snapshots, replay, `StateMachine`, `StateHash` |
+| `lq-clob` | Order-level CLOB: price-time match, TIF, STP, cancel/replace, ST expiry |
+| `lq-perps` | Subaccounts, IM/MM pre-trade checks, liquidation @ bankruptcy price, insurance, ADL, funding |
+| `lq-oracle` | Multi-venue median aggregation (read path) + `OracleBook` circuit breakers (write path) |
 | `lq-solana-types` | Solana-specific types: `SolanaProgram`, `AmmPoolState`, `Slot` |
 | `lq-solana-data` | `SolanaDataAdapter`, `SolanaNormalizer`, slot tracking, reconnect |
 | `lq-solana-execution` | `OrderIntent`, transaction building, submission, reconciliation |
@@ -204,6 +209,7 @@ cargo bench --workspace
 | `lq-market-data` | `decode` | Binance 20-level depth JSON decode |
 | `lq-strategy` | `strategy` | Market-making decision cost |
 | `lq-risk` | `risk` | Order validation cost |
+| `lq-oracle` | `oracle` | Aggregation round, `apply_price` accept, gate check |
 
 Benchmarks use `criterion` with `harness = false`. The `bench` profile includes debug symbols (`debug = 1`).
 

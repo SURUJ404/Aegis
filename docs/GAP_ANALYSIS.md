@@ -1,6 +1,6 @@
 # Gap Analysis: Aegis → dYdX v4-Style Perpetuals Core
 
-**Status:** Phase 0 complete; Stage 1 (`lq-sequencer`) and Stage 2 (`lq-clob`) implemented.  
+**Status:** Phase 0 complete; Stages 1–4 (`lq-sequencer`, `lq-clob`, `lq-perps`, `lq-oracle`) implemented.  
 **Reference:** [dYdX v4-chain](https://github.com/dydxprotocol/v4-chain) — `protocol/x/clob`, `x/perpetuals`, `x/subaccounts`, `x/prices`, `x/liquidations`, `indexer/`, `v4-clients`.  
 **Date:** 2026-09-24
 
@@ -194,8 +194,8 @@ Legend: **P** = present (partial), **A** = absent, **R** = present but wrong sha
 | **Perps / margin** | | | | | |
 | 15 | Subaccounts (USDC collateral, positions) | `x/subaccounts` | **Done:** `lq-perps` `Subaccount { collateral, positions }`, `Transfer` deposits/withdrawals, insurance ledger reserved at `u64::MAX` | **A** | Stage 3 ✅ |
 | 16 | Initial / maintenance margin | `x/perpetuals` | **Done:** `MarketParams` IM/MM ratios; requirement = `|qty|·price·ratio` + open-order reservation; limits absorbed as pre-trade checks | **A** | Stage 3 ✅ |
-| 17 | Mark price / index price | oracle + mark | **Done:** mark = last trade/tick inside the SM (legacy behavior); **index price** not yet separate | **R** | Stage 3 ✅ (mark) / Stage 4 (index) |
-| 18 | Funding payments | funding daemon | **Done:** `SettleFunding` zero-sum payments + funding index (operator-triggered; interval daemon in Stage 4) | **A** | Stage 3 ✅ |
+| 17 | Mark price / index price | oracle + mark | **Done:** mark = last trade/tick inside the SM; **reference price** now prefers the Stage 4 oracle median (`price_of` = oracle → tick → trade) | **R** | Stage 3 ✅ (mark) / Stage 4 ✅ (oracle) |
+| 18 | Funding payments | funding daemon | **Done:** `SettleFunding` zero-sum payments + funding index (operator-triggered and oracle-gated; interval daemon moved to Stage 5) | **A** | Stage 3 ✅ |
 | 19 | Liquidation @ bankruptcy price | `x/liquidations` | **Done:** limit price `mark + (fee − equity)/qty`, synthetic IOC vs book, insurance residual, cascade breaker | **A** | Stage 3 ✅ |
 | 20 | Insurance fund | `x/insurance` | **Done:** fees credit the insurance ledger; residual closes settle against it at the limit price | **A** | Stage 3 ✅ |
 | 21 | ADL (auto-deleveraging) | ADL | **Done (full, not stub):** while insurance equity < 0, close largest opposite position at the insurance-neutral price | **A** | Stage 3 ✅ |
@@ -203,10 +203,10 @@ Legend: **P** = present (partial), **A** = absent, **R** = present but wrong sha
 | 23 | Risk limits absorbed as pre-trade margin checks | checkTx / place order | **Done:** `pre_trade_check` = validation + `PerpsConfig` limits + margin, verdicts Allow/Reduce/Reject; `RiskEngine` remains only on the legacy engine path | **A** | Stage 3 ✅ |
 | 24 | Block invariants (collateral, Σpos, margin) | EndBlocker | **Done:** `check_invariants` — collateral conserved, `Σ positions = 0`, pending = recomputed below-maintenance set — asserted after every apply in tests | **A** | Stage 3 ✅ |
 | **Oracle** | | | | | |
-| 25 | Multi-venue aggregation, median | `x/prices` | Per-venue books; cross-venue analyzer for arb only | **A** | Stage 4 `lq-oracle` |
-| 26 | Outlier rejection | price feed slashing | Absent | **A** | Stage 4 |
-| 27 | Staleness checks → halt | exchange params | `stale_market_ms` kill switch (wall-clock, outside log) | **P** | Stage 4 (make log-driven) |
-| 28 | Oracle results as log entries | vote/price txs | Live reads feed books directly | **R** | Stage 4 |
+| 25 | Multi-venue aggregation, median | `x/prices` | **Done:** `ObservationBook` (newest-per-venue, reuses `lq-market-data` events) + pure `aggregate()` — freshness filter → median → outlier rejection; `OraclePrice` log entries publish the result | **A** | Stage 4 ✅ |
+| 26 | Outlier rejection | price feed slashing | **Done:** median ± `outlier_band_bps` (1 % default); too few survivors ⇒ `ConsensusLost`, no publish; deviation breaker rejects publications moving > `max_deviation_bps` (10 % default) and halts the market | **A** | Stage 4 ✅ |
+| 27 | Staleness checks → halt | exchange params | **Done (log-driven):** `oracle_gate` = `oracle_halted` (latched deviation) / `oracle_stale` (`ts_ms − published_ts_ms > max_staleness_ms`); gates place/replace/liquidate/settle-funding; no wall clock in the SM | **P** | Stage 4 ✅ |
+| 28 | Oracle results as log entries | vote/price txs | **Done:** `EntryPayload::OraclePrice(OraclePriceCmd { price, observation_ts_ms, sources, override_band })` validated in-state → `ApplyOutput::OraclePublished`; rejections are `Ok` + `Rejected` outputs | **R** | Stage 4 ✅ |
 | **Gateway / auth** | | | | | |
 | 29 | Ed25519-signed orders | Cosmos secp256k1 / eth | Bearer token on **control API only**; orders unsigned | **A** | Stage 5 |
 | 30 | Order schema validation + rate limits at edge | CheckTx | Risk rate limit **after** strategy, in-process | **P** | Stage 5 |
@@ -303,7 +303,7 @@ Each stage = one PR-sized change: design note + code + invariant tests + docs + 
 | **1** | Sequencer + event-sourced state | **✅ Done** — `lq-sequencer` (WAL, snapshot, replay, `StateHash`, `LedgerState`); `LogEntry` with global+market seq; logical `ts_ms` | Replay empty→hash equality; hash stability; decoder fuzz; proptest seq monotonic; backtest cross-check |
 | **2** | CLOB | **✅ Done** — `lq-clob`: order-level book, TIF, STP, cancel/replace, ST vs stateful; `apply` returns `ApplyOutput`s | proptest price-time priority, conservation of qty; no-RNG match; p50/p99 match bench |
 | **3** | Perps + margin | **✅ Done** — `lq-perps`: subaccounts, IM/MM, pre-trade checks (limits absorbed from `lq-risk`), liquidation @ bankruptcy price, insurance, ADL, funding, block invariants; `Transfer`/`Liquidate`/`SettleFunding` entries | proptest collateral conservation + Σpositions=0 + replay determinism; 23 behavior tests; liquidation bench |
-| **4** | Oracle | `lq-oracle`: multi-source median, outlier reject, staleness → log entries; circuit breakers | prop: median/outlier; staleness halt; no live reads in SM |
+| **4** | Oracle | **✅ Done** — `lq-oracle`: multi-source median + outlier reject (`ObservationBook`, pure `aggregate()`), `OraclePrice` log entries, `OracleBook` embedded in `PerpsState` with deviation (halt + override re-baseline) and log-driven staleness gates on place/replace/liquidate/settle-funding | prop: median/outlier + order independence + never-panics; deviation halt/override; staleness gate; replay determinism on oracle logs; 21 behavior + 34 unit tests |
 | **5** | Gateway | Signed orders (ed25519), rate limits, validation, WS ingress → sequencer | Signature accept/reject fuzz; rate limit props; parser fuzz |
 | **6** | Indexer + stream | Emit fill/order/position/funding → Kafka; `lq-indexer` → Postgres + REST + Redis WS | Lag gauges; crash-restart from offset; API contract tests |
 | **7** | Raft | `openraft` 3-node, hot standby, failover, periodic hash compare + halt on mismatch | Chaos: leader kill, partition, WAL tail corruption |
@@ -351,7 +351,7 @@ Each stage = one PR-sized change: design note + code + invariant tests + docs + 
 1. **Kafka in Stage 6:** Redpanda single broker in docker-compose (vs external cluster) — default plan: one broker in compose.
 2. **openraft maturity / version:** pin at Stage 7 design time.
 3. **`Mode::Live`:** remains refused through Stage 8; paper/settlement-only.
-4. **Funding interval & insurance parameters:** **resolved** — defaults documented in `docs/stages/STAGE_3_PERPS.md` (`MarketParams` 10 % IM / 5 % MM, `liquidation_window_ms = 60_000`, fee/insurance behavior); interval scheduling itself moves to the Stage 4 funding daemon.
+4. **Funding interval & insurance parameters:** **resolved** — defaults documented in `docs/stages/STAGE_3_PERPS.md` (`MarketParams` 10 % IM / 5 % MM, `liquidation_window_ms = 60_000`, fee/insurance behavior); interval scheduling itself moves to the Stage 5 funding daemon (Stage 4 supplies the oracle gate it must respect).
 5. **Existing `deterministic_across_runs`:** re-expressed as sequencer replay tests; old backtest API may break — acceptable.
 6. **Decimal hashing:** state hash must use a canonical Decimal serialization (normalized scale/representation) so equal values always hash equal across replicas.
 
@@ -370,4 +370,6 @@ Phase 0 complete. **Plan approved with §7.1 decisions locked.**
 
 **Stage 3: complete** — see `docs/stages/STAGE_3_PERPS.md`.
 
-**Next:** Stage 4 (`lq-oracle`) — start only on explicit go-ahead.
+**Stage 4: complete** — see `docs/stages/STAGE_4_ORACLE.md`.
+
+**Next:** Stage 5 (Gateway) — start only on explicit go-ahead.

@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc a92d77e2f0c13bfcae16604a6946510f4bc7f31302d441452de7ccd921724eab # shrinks to obs = [Observation { venue: Binance, symbol: Symbol("BTC-USD"), price: 1, ts_ms: 69149 }, Observation { venue: Okx, symbol: Symbol("BTC-USD"), price: 2, ts_ms: 69149 }], now = 0, min_sources = 0

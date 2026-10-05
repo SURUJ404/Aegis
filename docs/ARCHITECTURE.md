@@ -16,6 +16,7 @@ This document describes the system design, component responsibilities, data flow
 |  lq-types  lq-core  lq-exchange  lq-orderbook  lq-market-data     |
 |  lq-strategy  lq-risk  lq-execution  lq-simulator  lq-backtest    |
 |  lq-persistence  lq-telemetry  lq-api  lq-sequencer  lq-clob         |
+|  lq-oracle  lq-perps                                                 |
 |  lq-solana-types  lq-solana-data  lq-solana-execution              |
 +--------------------------------------------------------------------+
                               |
@@ -59,6 +60,10 @@ lq-sequencer  (depends on lq-types, lq-core, lq-exchange)
    |
 lq-clob  (depends on lq-sequencer, lq-types)
    |
+lq-oracle  (depends on lq-sequencer, lq-core, lq-types)
+   |
+lq-perps  (depends on lq-sequencer, lq-clob, lq-oracle, lq-core, lq-types)
+   |
 lq-solana-types  (depends on lq-types, lq-core, lq-exchange)
    |
 lq-solana-data  (depends on lq-types, lq-core, lq-exchange, lq-solana-types)
@@ -74,7 +79,8 @@ lq-solana-execution  (depends on lq-types, lq-core, lq-execution, lq-solana-type
 - `lq-backtest` depends on strategy, risk, execution, and orderbook but not on market-data or persistence (it replays events directly).
 - `lq-sequencer` depends only on `lq-types`, `lq-core`, `lq-exchange` — no networking, no wall-clock in the state machine.
 - `lq-clob` depends only on `lq-sequencer` and `lq-types`; matching runs inside `StateMachine::apply` (price-time priority, TIF, STP, cancel/replace — see `docs/stages/STAGE_2_CLOB.md`).
-- `lq-perps` depends only on `lq-sequencer`, `lq-clob` and `lq-types`; it embeds `ClobState` so a fill and its margin update are one `apply` (subaccounts, IM/MM pre-trade checks, liquidation @ bankruptcy price, insurance, ADL, funding — see `docs/stages/STAGE_3_PERPS.md`).
+- `lq-oracle` depends only on `lq-sequencer`, `lq-core` and `lq-types`: the read path (`ObservationBook`, pure `aggregate()`) reuses `lq-core`'s `MarketEvent`, the write path (`OracleBook`) is embedded by `lq-perps` — the state machine never reads a feed or a clock (see `docs/stages/STAGE_4_ORACLE.md`).
+- `lq-perps` depends only on `lq-sequencer`, `lq-clob`, `lq-oracle`, `lq-core` and `lq-types`; it embeds `ClobState` so a fill and its margin update are one `apply` (subaccounts, IM/MM pre-trade checks, liquidation @ bankruptcy price, insurance, ADL, funding — see `docs/stages/STAGE_3_PERPS.md`) and `OracleBook` so the oracle median is the reference price and gates place/replace/liquidate/settle-funding entries (see `docs/stages/STAGE_4_ORACLE.md`).
 - `lq-solana-*` crates depend on the corresponding base crates (`lq-types`, `lq-core`, `lq-execution`) and on each other as needed.
 
 ## Event Bus Design

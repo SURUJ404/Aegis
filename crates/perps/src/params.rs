@@ -76,4 +76,8 @@ pub struct PerpsStats {
     pub margin_rejected: u64,
     /// Subaccounts newly flagged below maintenance margin.
     pub flagged: u64,
+    /// Entries refused by the Stage 4 oracle circuit breakers (halted or
+    /// stale market, rejected price publication).
+    #[serde(default)]
+    pub oracle_rejected: u64,
 }

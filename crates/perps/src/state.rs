@@ -22,6 +22,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use lq_clob::state::ClobState;
+use lq_oracle::{OracleBook, OracleOutcome, OracleParams};
 use lq_sequencer::entry::{EntryPayload, LogEntry, MarketId, PlaceOrderCmd};
 use lq_sequencer::hash::{
     finish, new_hasher, write_bytes, write_decimal, write_str, write_u64, StateHash,
@@ -70,6 +71,10 @@ pub struct PerpsState {
     pub(crate) last_trade: BTreeMap<MarketId, Price>,
     /// Liquidation notional samples inside the cascade-breaker window.
     pub(crate) liquidation_windows: BTreeMap<MarketId, Vec<(u64, Decimal)>>,
+    /// Stage 4: oracle prices + per-market deviation/staleness circuit
+    /// breakers (`lq-oracle`). Fed only by `EntryPayload::OraclePrice`
+    /// entries; consulted for the reference price and the new-risk gate.
+    pub(crate) oracle: OracleBook,
     pub(crate) stats: PerpsStats,
 }
 
@@ -91,6 +96,10 @@ struct PerpsWire {
     tick_marks: Vec<(MarketId, Price)>,
     last_trade: Vec<(MarketId, Price)>,
     liquidation_windows: Vec<(MarketId, Vec<(u64, Decimal)>)>,
+    /// Stage 3 snapshots predate the oracle; absent = empty book (default
+    /// params), so old WAL/snapshot pairs still decode.
+    #[serde(default)]
+    oracle: OracleBook,
     stats: PerpsStats,
 }
 
@@ -141,6 +150,7 @@ impl PerpsState {
             tick_marks: BTreeMap::new(),
             last_trade: BTreeMap::new(),
             liquidation_windows: BTreeMap::new(),
+            oracle: OracleBook::new(),
             stats: PerpsStats::default(),
         }
     }
@@ -148,6 +158,13 @@ impl PerpsState {
     /// Override margin parameters for one market (hashed; replicas must agree).
     pub fn with_market_params(mut self, market: &MarketId, params: MarketParams) -> Self {
         self.market_params.insert(market.clone(), params);
+        self
+    }
+
+    /// Override oracle circuit-breaker parameters (hashed; replicas must
+    /// agree). Call before feeding any `OraclePrice` entries.
+    pub fn with_oracle_params(mut self, params: OracleParams) -> Self {
+        self.oracle = OracleBook::with_params(params);
         self
     }
 
@@ -200,12 +217,26 @@ impl PerpsState {
             .unwrap_or(self.cfg.default_market_params)
     }
 
-    /// Reference price for margin: latest tick mark, else latest trade price.
+    /// Reference price for margin: oracle price when the market is covered,
+    /// else latest tick mark, else latest trade price.
     pub fn price_of(&self, market: &MarketId) -> Option<Price> {
-        self.tick_marks
-            .get(market)
-            .copied()
+        self.oracle
+            .price(market)
+            .or_else(|| self.tick_marks.get(market).copied())
             .or_else(|| self.last_trade.get(market).copied())
+    }
+
+    /// The oracle book (read access for daemons, APIs and tests).
+    pub fn oracle(&self) -> &OracleBook {
+        &self.oracle
+    }
+
+    /// Circuit-breaker gate for new risk in `market` at logical time
+    /// `ts_ms`: `Some("oracle_halted")` / `Some("oracle_stale")` while the
+    /// market must refuse places, replaces, liquidations and funding
+    /// settlements. Exported for the Stage 5 gateway's CheckTx validation.
+    pub fn oracle_gate(&self, market: &MarketId, ts_ms: u64) -> Option<&'static str> {
+        self.oracle.gate(market, ts_ms)
     }
 
     /// Equity = cash + Σ position marked to the reference price.
@@ -753,7 +784,8 @@ impl PerpsState {
                 | ApplyOutput::Liquidated { .. }
                 | ApplyOutput::FundingSettled { .. }
                 | ApplyOutput::Adl { .. }
-                | ApplyOutput::MarginFlagged { .. } => {}
+                | ApplyOutput::MarginFlagged { .. }
+                | ApplyOutput::OraclePublished { .. } => {}
             }
         }
         self.revalidate_reduce_only(touched, ts_ms, out);
@@ -885,6 +917,17 @@ impl PerpsState {
 
     fn apply_funding(&mut self, entry: &LogEntry, rate: Decimal, out: &mut Vec<ApplyOutput>) {
         let market = &entry.market;
+        // Stage 4: settling funding at a halted/stale reference price would
+        // move collateral on numbers the oracle no longer vouches for.
+        if let Some(reason) = self.oracle.gate(market, entry.ts_ms) {
+            out.push(Self::reject_output(
+                Uuid::nil(),
+                market,
+                reason,
+                entry.ts_ms,
+            ));
+            return;
+        }
         let Some(mark) = self.price_of(market) else {
             out.push(Self::reject_output(
                 Uuid::nil(),
@@ -972,6 +1015,14 @@ impl PerpsState {
             reject("no_mark_price");
             return Ok(None);
         };
+
+        // Stage 4: liquidations need a trustworthy mark — refuse while the
+        // market's oracle is halted or stale (bankruptcy math on a known-bad
+        // price would liquidate at the wrong level).
+        if let Some(reason) = self.oracle.gate(market, entry.ts_ms) {
+            reject(reason);
+            return Ok(None);
+        }
 
         // Only unhealthy subaccounts may be liquidated.
         let equity = self.equity_of(sub);
@@ -1307,26 +1358,41 @@ impl StateMachine for PerpsState {
         match &entry.payload {
             EntryPayload::PlaceOrder(cmd) => {
                 let sub = cmd.subaccount.unwrap_or(DEFAULT_SUBACCOUNT);
-                let placed: Option<PlaceOrderCmd> = match self.pre_trade_check(&entry.market, cmd, None) {
-                    PreTradeVerdict::Allow { .. } => Some(cmd.clone()),
-                    PreTradeVerdict::Reduce { qty, .. } => {
-                        // `lq-risk` parity: oversized orders rest at the cap
-                        // instead of being rejected.
-                        let mut smaller = cmd.clone();
-                        smaller.quantity = qty;
-                        Some(smaller)
-                    }
-                    verdict => {
-                        self.stats.margin_rejected += 1;
-                        out.push(Self::reject_output(
-                            cmd.order_id,
-                            &entry.market,
-                            verdict.as_str(),
-                            entry.ts_ms,
-                        ));
-                        None
-                    }
-                };
+                // Stage 4: deviation/staleness breaker refuses new risk
+                // before the margin check runs; the entry is still consumed.
+                let placed: Option<PlaceOrderCmd> =
+                    match self.oracle.gate(&entry.market, entry.ts_ms) {
+                        Some(reason) => {
+                            self.stats.oracle_rejected += 1;
+                            out.push(Self::reject_output(
+                                cmd.order_id,
+                                &entry.market,
+                                reason,
+                                entry.ts_ms,
+                            ));
+                            None
+                        }
+                        None => match self.pre_trade_check(&entry.market, cmd, None) {
+                            PreTradeVerdict::Allow { .. } => Some(cmd.clone()),
+                            PreTradeVerdict::Reduce { qty, .. } => {
+                                // `lq-risk` parity: oversized orders rest at the cap
+                                // instead of being rejected.
+                                let mut smaller = cmd.clone();
+                                smaller.quantity = qty;
+                                Some(smaller)
+                            }
+                            verdict => {
+                                self.stats.margin_rejected += 1;
+                                out.push(Self::reject_output(
+                                    cmd.order_id,
+                                    &entry.market,
+                                    verdict.as_str(),
+                                    entry.ts_ms,
+                                ));
+                                None
+                            }
+                        },
+                    };
                 if let Some(placed) = placed {
                     let normalized = Self::normalize_owner(&placed, sub);
                     let is_new = self.clob.order(placed.order_id).is_none();
@@ -1353,23 +1419,35 @@ impl StateMachine for PerpsState {
             EntryPayload::ReplaceOrder { old_order_id, new } => {
                 let sub = new.subaccount.unwrap_or(DEFAULT_SUBACCOUNT);
                 let placed: Option<PlaceOrderCmd> =
-                    match self.pre_trade_check(&entry.market, new, Some(*old_order_id)) {
-                        PreTradeVerdict::Allow { .. } => Some(new.as_ref().clone()),
-                        PreTradeVerdict::Reduce { qty, .. } => {
-                            let mut smaller = new.as_ref().clone();
-                            smaller.quantity = qty;
-                            Some(smaller)
-                        }
-                        verdict => {
-                            self.stats.margin_rejected += 1;
+                    match self.oracle.gate(&entry.market, entry.ts_ms) {
+                        Some(reason) => {
+                            self.stats.oracle_rejected += 1;
                             out.push(Self::reject_output(
                                 new.order_id,
                                 &entry.market,
-                                verdict.as_str(),
+                                reason,
                                 entry.ts_ms,
                             ));
                             None
                         }
+                        None => match self.pre_trade_check(&entry.market, new, Some(*old_order_id)) {
+                            PreTradeVerdict::Allow { .. } => Some(new.as_ref().clone()),
+                            PreTradeVerdict::Reduce { qty, .. } => {
+                                let mut smaller = new.as_ref().clone();
+                                smaller.quantity = qty;
+                                Some(smaller)
+                            }
+                            verdict => {
+                                self.stats.margin_rejected += 1;
+                                out.push(Self::reject_output(
+                                    new.order_id,
+                                    &entry.market,
+                                    verdict.as_str(),
+                                    entry.ts_ms,
+                                ));
+                                None
+                            }
+                        },
                     };
                 if let Some(placed) = placed {
                     let normalized = Self::normalize_owner(&placed, sub);
@@ -1439,6 +1517,33 @@ impl StateMachine for PerpsState {
                 clob_out = self.clob.apply_noop(entry)?;
                 self.apply_funding(entry, *rate, &mut out);
             }
+            EntryPayload::OraclePrice(cmd) => {
+                // Stage 4: the oracle layer validates quorum, observation
+                // freshness and the deviation band, then (on acceptance)
+                // publishes the price. The CLOB consumes the sequence; the
+                // common tail below re-runs the margin pipeline because a
+                // price change moves equity (ADL, flag rebuild).
+                match self.oracle.apply_price(&entry.market, cmd, entry.ts_ms) {
+                    OracleOutcome::Accepted => {
+                        out.push(ApplyOutput::OraclePublished {
+                            market: entry.market.clone(),
+                            price: cmd.price,
+                            sources: cmd.sources,
+                            ts_ms: entry.ts_ms,
+                        });
+                    }
+                    OracleOutcome::Rejected { reason } => {
+                        self.stats.oracle_rejected += 1;
+                        out.push(Self::reject_output(
+                            Uuid::nil(),
+                            &entry.market,
+                            reason,
+                            entry.ts_ms,
+                        ));
+                    }
+                }
+                clob_out = self.clob.apply(entry)?;
+            }
         }
 
         // CLOB outputs → subaccount cash/positions (atomic with the match).
@@ -1491,6 +1596,10 @@ impl StateMachine for PerpsState {
         // The embedded CLOB contributes its entire canonical hash.
         let clob_hash = self.clob.state_hash();
         write_bytes(&mut h, &clob_hash.0);
+
+        // The oracle book contributes its own canonical hash (params,
+        // accepted prices, breaker latches, counters).
+        self.oracle.write_hash(&mut h);
 
         write_u64(&mut h, self.last_global_seq);
         write_u64(&mut h, self.market_seqs.len() as u64);
@@ -1591,6 +1700,7 @@ impl StateMachine for PerpsState {
         write_u64(&mut h, self.stats.funding_settlements);
         write_u64(&mut h, self.stats.margin_rejected);
         write_u64(&mut h, self.stats.flagged);
+        write_u64(&mut h, self.stats.oracle_rejected);
         finish(h)
     }
 
@@ -1667,6 +1777,7 @@ impl StateMachine for PerpsState {
                 .iter()
                 .map(|(k, v)| (k.clone(), v.clone()))
                 .collect(),
+            oracle: self.oracle.clone(),
             stats: self.stats,
         };
         serde_json::to_vec(&wire).map_err(|e| e.to_string())
@@ -1700,6 +1811,7 @@ impl StateMachine for PerpsState {
             tick_marks: wire.tick_marks.into_iter().collect(),
             last_trade: wire.last_trade.into_iter().collect(),
             liquidation_windows: wire.liquidation_windows.into_iter().collect(),
+            oracle: wire.oracle,
             stats: wire.stats,
         };
         // Rebuild the pending set defensively (it is derivable state).

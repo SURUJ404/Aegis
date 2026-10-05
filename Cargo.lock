@@ -2932,6 +2932,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "lq-oracle"
+version = "0.1.0"
+dependencies = [
+ "criterion",
+ "lq-core",
+ "lq-sequencer",
+ "lq-types",
+ "proptest",
+ "rust_decimal",
+ "rust_decimal_macros",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "lq-orderbook"
 version = "0.1.0"
 dependencies = [
@@ -2953,6 +2969,7 @@ version = "0.1.0"
 dependencies = [
  "criterion",
  "lq-clob",
+ "lq-oracle",
  "lq-sequencer",
  "lq-types",
  "proptest",

@@ -149,6 +149,15 @@ pub enum ApplyOutput {
         subaccount: u64,
         ts_ms: u64,
     },
+    /// Stage 4: an oracle price publication was accepted for `market`;
+    /// `price` becomes the reference price for margin, liquidation and
+    /// funding in that market (dYdX `x/prices` update analogue).
+    OraclePublished {
+        market: MarketId,
+        price: Price,
+        sources: u8,
+        ts_ms: u64,
+    },
 }
 
 /// Deterministic event-sourced state machine.
@@ -437,9 +446,12 @@ impl StateMachine for LedgerState {
             EntryPayload::MarketTick(tick) => self.apply_tick(&entry.market, tick),
             // Stage 3 margin entries have no effect on the Stage-1 ledger:
             // they advance the sequence but mutate no ledger field.
+            // Stage 4 oracle entries likewise belong to the composed oracle +
+            // margin machine (`lq-oracle` / `lq-perps`).
             EntryPayload::Transfer { .. }
             | EntryPayload::Liquidate { .. }
-            | EntryPayload::SettleFunding { .. } => {}
+            | EntryPayload::SettleFunding { .. }
+            | EntryPayload::OraclePrice(_) => {}
         }
 
         self.last_global_seq = entry.global_seq;

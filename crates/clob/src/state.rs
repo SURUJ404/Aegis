@@ -769,10 +769,12 @@ impl StateMachine for ClobState {
                 self.apply_tick(&entry.market, tick);
             }
             // Stage 3 margin entries belong to `lq-perps`; the CLOB consumes
-            // their sequence (advance below) but mutates nothing.
+            // their sequence (advance below) but mutates nothing. Stage 4
+            // oracle entries belong to the oracle + margin layer above.
             EntryPayload::Transfer { .. }
             | EntryPayload::Liquidate { .. }
-            | EntryPayload::SettleFunding { .. } => {}
+            | EntryPayload::SettleFunding { .. }
+            | EntryPayload::OraclePrice(_) => {}
         }
 
         self.last_global_seq = entry.global_seq;

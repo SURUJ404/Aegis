@@ -155,7 +155,7 @@ removes a position, so the loop terminates; flat markets are never touched.
 
 | Choice | Why | Cost |
 |---|---|---|
-| Cash-basis equity (`collateral ± qty·price`) | no per-position realized-PnL ledgers; conservation is checkable | mark must exist for equity; oracle-driven mark lands Stage 4 |
+| Cash-basis equity (`collateral ± qty·price`) | no per-position realized-PnL ledgers; conservation is checkable | mark must exist for equity; oracle-driven mark landed in Stage 4 |
 | `PerpsState` composes `ClobState` (one machine) | fill + margin = one atomic transition, one hash | perps harness must run the CLOB seq lockstep |
 | Liquidation = synthetic IOC + insurance residual | reuses matching, exact bankruptcy floor, no special fill engine | synthetic ids must stay out of the client id space (high-half prefix) |
 | ADL closes largest opposite at insurance-neutral price | deterministic, terminates, no RNG/priority scores | simpler than dYdX's deleveraging priority ranking |
@@ -166,11 +166,13 @@ removes a position, so the loop terminates; flat markets are never touched.
 ## Residual risks / missing
 
 - **Mark price is trade-based** (`last_trade` / tick): no index price or
-  oracle median yet — Stage 4 supplies log-driven marks and staleness.
+  oracle median yet — delivered by Stage 4 (`lq-oracle`): log-driven oracle
+  median with staleness/deviation gates (see `STAGE_4_ORACLE.md`).
 - Funding is **operator-triggered** (`SettleFunding` per entry); interval
-  scheduling and rate derivation come with the Stage 4 funding daemon.
+  scheduling and rate derivation come with the Stage 5 funding daemon (now
+  oracle-gated).
 - Liquidator daemon does not exist yet: `pending_liquidations` is consumed by
-  tests; wiring a daemon to submit `Liquidate` entries is Stage 4/6 work.
+  tests; wiring a daemon to submit `Liquidate` entries is Stage 5/6 work.
 - Insurance fund has no deposit/withdrawal entries of its own — it grows from
   fees and liquidation margins only.
 - `sweep_flat_negatives` zeroes dust balances; no "dust threshold" policy yet.

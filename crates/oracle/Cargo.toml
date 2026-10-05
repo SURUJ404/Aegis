@@ -1,27 +1,24 @@
 [package]
-name = "lq-perps"
-description = "Perpetuals margin state machine: subaccounts, IM/MM, liquidation at bankruptcy price, insurance fund, ADL, funding — composed over lq-clob."
+name = "lq-oracle"
+description = "Oracle layer: multi-venue price aggregation (median, outlier rejection, staleness) and the log-driven oracle price component with per-market circuit breakers."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [dependencies]
 lq-sequencer = { path = "../sequencer" }
-lq-clob = { path = "../clob" }
-lq-oracle = { path = "../oracle" }
+lq-core = { path = "../core" }
 lq-types = { path = "../types" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 rust_decimal = { workspace = true }
-uuid = { workspace = true }
 
 [dev-dependencies]
 proptest = { workspace = true }
 criterion = { workspace = true }
 rust_decimal_macros = { workspace = true }
-tempfile = "3"
 
 [[bench]]
-name = "perps_liquidation"
+name = "oracle"
 harness = false

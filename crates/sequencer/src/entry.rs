@@ -73,6 +73,35 @@ pub enum EntryPayload {
     SettleFunding {
         rate: Decimal,
     },
+    /// Stage 4: publish an aggregated oracle price for `entry.market`
+    /// (dYdX `x/prices` analogue). Produced by the oracle daemon **outside**
+    /// the state machine from multi-venue observations; the state machine
+    /// only ever reads prices from the log, never from live feeds.
+    OraclePrice(OraclePriceCmd),
+}
+
+/// One oracle price publication for `entry.market` (Stage 4).
+///
+/// Validated inside `apply` by the oracle layer: observation freshness vs the
+/// entry's logical time, minimum source quorum, and a per-market deviation
+/// circuit breaker. A rejected publication is an `Ok` path (sequence still
+/// consumed) with an `ApplyOutput::Rejected` — the WAL always replays.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OraclePriceCmd {
+    /// Aggregated price (median after outlier rejection), fixed-point.
+    pub price: Price,
+    /// Logical time of the newest venue observation that fed the aggregate.
+    /// Must not be in the future of `entry.ts_ms`; staleness is judged
+    /// against it so the state machine never reads a clock.
+    pub observation_ts_ms: u64,
+    /// Number of venues that agreed (fresh, post-outlier-rejection). Must be
+    /// at least `OracleParams::min_sources`.
+    pub sources: u8,
+    /// Operator/daemon acknowledgement (`override_band`) that this move legitimately
+    /// deviation band: accepts the price, re-baselines the breaker and clears
+    /// the market's halt. Every other exceeding publication halts the market.
+    #[serde(default)]
+    pub override_band: bool,
 }
 
 /// Self-trade prevention action when an incoming order would match a resting
@@ -158,7 +187,9 @@ pub enum FillLiquidity {
     Taker,
 }
 
-/// Mark/last price observation (oracle results land here from Stage 4).
+/// Mark/last price observation from trade/tick flow (legacy path). Markets
+/// covered by the oracle (`EntryPayload::OraclePrice`) take their reference
+/// price from the oracle instead — see `lq-oracle`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MarketTickCmd {
     pub last: Price,
@@ -177,6 +208,7 @@ impl LogEntry {
             EntryPayload::Transfer { .. } => "transfer",
             EntryPayload::Liquidate { .. } => "liquidate",
             EntryPayload::SettleFunding { .. } => "settle_funding",
+            EntryPayload::OraclePrice(_) => "oracle_price",
         }
     }
 }

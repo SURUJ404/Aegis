@@ -91,6 +91,25 @@ mod tests {
     }
 
     #[test]
+    fn roundtrip_oracle_price() {
+        let e = LogEntry {
+            global_seq: 3,
+            market_seq: 1,
+            market: MarketId::new(Exchange::Paper, Symbol("BTC-USDT".into())),
+            ts_ms: 1_700_000_000_123,
+            payload: EntryPayload::OraclePrice(crate::entry::OraclePriceCmd {
+                price: dec!(100_500.25),
+                observation_ts_ms: 1_700_000_000_000,
+                sources: 5,
+                override_band: false,
+            }),
+        };
+        let back = decode_entry(&encode_entry(&e).unwrap()).unwrap();
+        assert_eq!(e, back);
+        assert_eq!(back.payload_kind(), "oracle_price");
+    }
+
+    #[test]
     fn garbage_bytes_err_not_panic() {
         for bytes in [
             &[][..],
