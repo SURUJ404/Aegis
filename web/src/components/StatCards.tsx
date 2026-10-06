@@ -2,7 +2,7 @@ import { fmtPnl, fmtPrice, fmtQty } from "../api";
 import type { StateSummary } from "../types";
 
 export default function StatCards({ state, totalPnl }: { state: StateSummary; totalPnl: number }) {
-  const openOrders = state.orders.filter((o) => !o.status.endsWith("filled") && !["cancelled", "rejected", "expired"].includes(o.status)).length;
+  const openOrders = state.orders.filter((o) => o.status !== "filled" && !["cancelled", "rejected", "expired"].includes(o.status)).length;
   const grossExposure = state.inventory.reduce((acc, i) => acc + Math.abs(Number(i.net_qty)), 0);
   const quotable = state.market_state.filter((m) => m.regime !== "no_liquidity" && m.regime !== "stale" && !m.stale).length;
 

@@ -38,7 +38,7 @@ fn load_config(cli: &Cli) -> anyhow::Result<EngineConfig> {
             let text = std::fs::read_to_string(path)?;
             EngineConfig::from_toml_with_env(&text).map_err(|e| anyhow::anyhow!("config parse error: {e}"))
         }
-        None => Ok(EngineConfig::default()),
+        None => Ok(EngineConfig::default().with_env_overrides()),
     }
 }
 
@@ -81,7 +81,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Control-plane API.
     let api_bind = cli.bind.clone().unwrap_or_else(|| cfg.api.bind.clone());
-    let app = lq_api::build_router(ApiState::new(state, Arc::clone(&bus)));
+    let app = lq_api::build_router(ApiState::new(state, Arc::clone(&bus)).with_token(cfg.api.token.clone()));
     let listener = tokio::net::TcpListener::bind(&api_bind).await?;
     tracing::info!(bind = %api_bind, "api server listening");
     axum::serve(listener, app).await?;

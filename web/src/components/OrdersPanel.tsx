@@ -44,7 +44,7 @@ export default function OrdersPanel({ orders }: { orders: Order[] }) {
                 <td>{fmtQty(o.filled_quantity)}</td>
                 <td>{fmtPrice(o.avg_fill_price)}</td>
                 <td>
-                  <span className={`pill ${TERMINAL.has(o.status) ? "pill-dim" : o.status === "filled" ? "pill-ok" : "pill-warn"}`}>
+                  <span className={`pill ${TERMINAL.has(o.status) ? "pill-dim" : "pill-warn"}`}>
                     {o.status}
                   </span>
                 </td>

@@ -16,24 +16,26 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const pnlHistory = useRef<number[]>([]);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    return startPolling(
+    const stop = startPolling(
       (s) => {
         setState(s);
         setConnected(true);
         setError(null);
         const pnl = s.inventory.reduce((acc, i) => acc + Number(i.realized_pnl), 0);
-        const last = pnlHistory.current[pnlHistory.current.length - 1];
-        if (last === undefined || pnl !== last) {
-          pnlHistory.current = [...pnlHistory.current.slice(-119), pnl];
-        }
+        pnlHistory.current = [...pnlHistory.current.slice(-119), pnl];
       },
       (e) => {
         setConnected(false);
         setError(e);
       },
     );
+    return () => {
+      stop();
+      if (toastTimer.current) clearTimeout(toastTimer.current);
+    };
   }, []);
 
   const act = async (action: () => Promise<{ accepted: boolean; message: string }>, label: string) => {
@@ -45,7 +47,8 @@ export default function App() {
       setToast(`${label} failed: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setBusy(false);
-      setTimeout(() => setToast(null), 4000);
+      if (toastTimer.current) clearTimeout(toastTimer.current);
+      toastTimer.current = setTimeout(() => setToast(null), 4000);
     }
   };
 

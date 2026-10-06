@@ -4,6 +4,7 @@
 # Local configuration / secrets
 .env
 .env.*
+!.env.example
 *.local
 credentials.json
 secrets/
@@ -41,3 +42,14 @@ Thumbs.db
 /web/dist/
 /web/.vite/
 /web/*.tsbuildinfo
+/web/test-results/
+/web/playwright-report/
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.hypothesis/
+.venv/

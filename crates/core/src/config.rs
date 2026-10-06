@@ -51,6 +51,14 @@ impl EngineConfig {
         Ok(cfg)
     }
 
+    /// Apply environment overrides to an already-built config — used for the
+    /// built-in defaults when no `--config` file is supplied, so `.env` files
+    /// and shell variables work with or without a TOML file.
+    pub fn with_env_overrides(mut self) -> Self {
+        self.apply_env_overrides();
+        self
+    }
+
     fn apply_env_overrides(&mut self) {
         if let Ok(v) = std::env::var("LQ_PERSISTENCE_ENABLED") {
             self.persistence.enabled = v == "1" || v.eq_ignore_ascii_case("true");

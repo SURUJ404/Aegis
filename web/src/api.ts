@@ -22,6 +22,10 @@ async function postJson(url: string, body?: unknown): Promise<ControlResponse> {
     headers: body ? { "content-type": "application/json" } : undefined,
     body: body ? JSON.stringify(body) : undefined,
   });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`control request failed: ${res.status}${text ? ` ${text.slice(0, 120)}` : ""}`);
+  }
   const payload = (await res.json()) as ControlResponse;
   return payload;
 }
