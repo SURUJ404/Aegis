@@ -25,7 +25,7 @@ fn load_config(cli: &Cli) -> anyhow::Result<EngineConfig> {
             EngineConfig::from_toml_with_env(&text)
                 .map_err(|e| anyhow::anyhow!("config parse error: {e}"))
         }
-        None => Ok(EngineConfig::default()),
+        None => Ok(EngineConfig::default().with_env_overrides()),
     }
 }
 

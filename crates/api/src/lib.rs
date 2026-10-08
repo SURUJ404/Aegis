@@ -142,7 +142,7 @@ async fn auth(
         .and_then(|v| v.to_str().ok());
     let valid = header
         .and_then(|v| v.strip_prefix("Bearer "))
-        .map(|token| token == expected)
+        .map(|token| token_matches(expected, token))
         .unwrap_or(false);
     if valid {
         next.run(request).await
@@ -153,6 +153,17 @@ async fn auth(
         )
             .into_response()
     }
+}
+
+/// Compare a presented bearer token against the expected secret without
+/// short-circuiting on the first differing byte (only the length check can
+/// leak, which is accepted for fixed-length tokens).
+fn token_matches(expected: &str, presented: &str) -> bool {
+    let (a, b) = (expected.as_bytes(), presented.as_bytes());
+    if a.len() != b.len() {
+        return false;
+    }
+    a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
 }
 
 /// Permissive CORS for the web dashboard. The control plane is intentionally
@@ -914,14 +925,22 @@ pub struct KillBody {
     pub reason: String,
 }
 
-async fn publish_kill(State(api): State<ApiState>, Json(body): Json<KillBody>) -> ControlResponse {
-    publish_control(
+async fn publish_kill(
+    State(api): State<ApiState>,
+    Json(body): Json<KillBody>,
+) -> Result<ControlResponse, Response> {
+    if body.reason.trim().is_empty() {
+        return Err((
+            StatusCode::UNPROCESSABLE_ENTITY,
+            Json(serde_json::json!({ "error": "reason required" })),
+        )
+            .into_response());
+    }
+    Ok(publish_control(
         &api.bus,
-        ControlEvent::KillSwitch {
-            reason: body.reason,
-        },
+        ControlEvent::KillSwitch { reason: body.reason },
     )
-    .await
+    .await)
 }
 
 async fn publish_control(bus: &EventBus, event: ControlEvent) -> ControlResponse {
@@ -1033,6 +1052,42 @@ mod tests {
         assert!(
             matches!(received, Some(ControlEvent::KillSwitch { reason }) if reason == "test halt")
         );
+    }
+
+    #[tokio::test]
+    async fn kill_switch_rejects_empty_reason() {
+        let bus = Arc::new(EventBus::new());
+        let mut sub = bus.control().subscribe();
+        let api = ApiState::new(EngineState::new(), Arc::clone(&bus));
+        let app = build_router(api);
+
+        for body in [r#"{"reason":""}"#, r#"{"reason":"   "}"#] {
+            let res = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method("POST")
+                        .uri("/api/v1/control/kill")
+                        .header("content-type", "application/json")
+                        .body(Body::from(body.to_string()))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(res.status(), HttpStatus::UNPROCESSABLE_ENTITY, "body={body}");
+        }
+        // Nothing must have been published for the rejected attempts.
+        assert!(sub.try_recv().is_err());
+    }
+
+    #[test]
+    fn token_matches_is_exact_and_leaks_nothing_but_length() {
+        assert!(token_matches("s3cret", "s3cret"));
+        assert!(token_matches("", ""));
+        assert!(!token_matches("s3cret", "s3cretX"));
+        assert!(!token_matches("s3cret", "s3cre"));
+        assert!(!token_matches("s3cret", ""));
+        assert!(!token_matches("", "x"));
     }
 
     #[tokio::test]

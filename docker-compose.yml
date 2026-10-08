@@ -1,0 +1,52 @@
+# Free-tier sized stack for the Trading Terminal: one API container, one static
+# front end. Limits are deliberately small (512 MiB / 0.1 CPU for the API) so a
+# deployment that fits here fits anywhere in the low end of a free plan.
+name: aegis-terminal
+
+services:
+  api:
+    build:
+      context: ./restapis
+    environment:
+      # Platforms inject PORT; the container must honour it instead of 8000.
+      PORT: "10000"
+      DATA_SOURCE: "synthetic"
+      # CORS is open to the front end and nothing else.
+      ALLOWED_ORIGINS: "http://localhost:4173"
+    ports:
+      - "10000:10000"
+    read_only: true
+    tmpfs:
+      - /tmp
+    cpus: 0.10
+    mem_limit: 512m
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:10000/health', timeout=3)",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/web/Dockerfile
+      args:
+        # Baked into the bundle: the browser calls the API directly.
+        VITE_API_URL: "http://localhost:10000"
+    ports:
+      - "4173:8080"
+    read_only: true
+    tmpfs:
+      - /tmp
+    cpus: 0.10
+    mem_limit: 64m
+    depends_on:
+      api:
+        condition: service_healthy

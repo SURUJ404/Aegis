@@ -53,7 +53,12 @@ async function postJson(url: string, body?: unknown): Promise<ControlResponse> {
     headers: { ...authHeaders(), ...(body ? { "content-type": "application/json" } : {}) },
     body: body ? JSON.stringify(body) : undefined,
   });
-  return (await res.json()) as ControlResponse;
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`control request failed: ${res.status}${text ? ` ${text.slice(0, 120)}` : ""}`);
+  }
+  const payload = (await res.json()) as ControlResponse;
+  return payload;
 }
 
 /// Poll the control plane once a second: state and book in full, the log as

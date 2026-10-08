@@ -24,6 +24,7 @@ members = [
     "apps/backtest-runner",
     "apps/simulator",
     "apps/api-server",
+    "apps/tui",
 ]
 
 [workspace.package]
@@ -63,8 +64,11 @@ rust_decimal = { version = "1", features = ["serde", "maths"] }
 rust_decimal_macros = "1"
 
 # HTTP / WS clients
-reqwest = { version = "0.12", features = ["json", "rustls-tls-ring"] }
+reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
 axum = "0.8"
+
+# Terminal UI
+ratatui = "0.30"
 
 # TLS (force a single rustls crypto provider so TLS doesn't panic at runtime)
 rustls = { version = "0.23", features = ["ring"] }

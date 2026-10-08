@@ -1,0 +1,10 @@
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pandas>=2.2
+numpy>=1.26
+# optional: real prices (set DATA_SOURCE=yfinance)
+yfinance>=0.2.40
+# tests
+pytest>=8
+httpx>=0.27
+hypothesis>=6

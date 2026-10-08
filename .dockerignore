@@ -2,7 +2,25 @@ target/
 .git/
 docs/
 deploy/
-docker/
 tests/
 benches/
 *.toml.bak
+
+# The engine's compose stack is not part of these builds, but the front-end
+# image lives under docker/web and must stay in the context.
+docker/*
+!docker/web
+
+# Front-end build context: only sources and the lockfile are needed.
+web/node_modules/
+web/dist/
+web/test-results/
+web/playwright-report/
+**/__pycache__/
+.pytest_cache/
+.ruff_cache/
+
+# Never ship local state or credentials in an image.
+secrets/
+.env
+*.log

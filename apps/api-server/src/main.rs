@@ -37,7 +37,7 @@ fn load_config(cli: &Cli) -> anyhow::Result<EngineConfig> {
             EngineConfig::from_toml_with_env(&text)
                 .map_err(|e| anyhow::anyhow!("config parse error: {e}"))
         }
-        None => Ok(EngineConfig::default()),
+        None => Ok(EngineConfig::default().with_env_overrides()),
     }
 }
 
@@ -80,7 +80,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Control-plane API + the built dashboard (web/dist).
     let api_bind = cli.bind.clone().unwrap_or_else(|| cfg.api.bind.clone());
-    let mut api = ApiState::new(state, Arc::clone(&bus));
+    let mut api = ApiState::new(state, Arc::clone(&bus)).with_token(cfg.api.token.clone());
     let web_dir = PathBuf::from(&cfg.api.web_dir);
     if cfg.api.web_dir.is_empty() {
         tracing::info!("dashboard: static serving disabled (api.web_dir empty)");
